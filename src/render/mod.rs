@@ -1,5 +1,7 @@
 #![allow(unused)]
 
+mod mesh;
+
 use std::sync::Arc;
 use winit::{
 	application::ApplicationHandler,
@@ -18,12 +20,16 @@ pub struct Renderer {
 	queue: wgpu::Queue,
 	config: wgpu::SurfaceConfiguration,
 	size: winit::dpi::PhysicalSize<u32>,
-	window: Arc<Window>,
+	pub window: Arc<Window>,
+	render_pipeline: wgpu::RenderPipeline,
 }
 
 impl Renderer {
-	pub fn new(window: Arc<Window>) -> Renderer {
+	pub fn new(window: Window) -> Renderer {
+		// window needs to be an Arc because both this struct and the surface constructor needs it
+		let window = Arc::new(window);
 
+		// async block cus some of the GPU adapter stuff is async
 		return async move {
 			let size = window.inner_size();
 
@@ -78,7 +84,56 @@ impl Renderer {
 				desired_maximum_frame_latency: 2,
 			};
 
-			println!("Instantiated renderer");
+			// setting up shaders
+			let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
+			let render_pipeline_layout =
+				device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+					label: Some("Render Pipeline Layout"),
+					bind_group_layouts: &[],
+					push_constant_ranges: &[],
+				});
+			let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+				label: Some("Render Pipeline"),
+				layout: Some(&render_pipeline_layout),
+				vertex: wgpu::VertexState {
+					module: &shader,
+					entry_point: "vs_main", // 1.
+					buffers: &[], // 2.
+					compilation_options: wgpu::PipelineCompilationOptions::default(),
+				},
+				fragment: Some(wgpu::FragmentState { // 3.
+					module: &shader,
+					entry_point: "fs_main",
+					targets: &[Some(wgpu::ColorTargetState { // 4.
+						format: config.format,
+						blend: Some(wgpu::BlendState::REPLACE),
+						write_mask: wgpu::ColorWrites::ALL,
+					})],
+					compilation_options: wgpu::PipelineCompilationOptions::default(),
+				}),
+				primitive: wgpu::PrimitiveState {
+					topology: wgpu::PrimitiveTopology::TriangleList, // 1.
+					strip_index_format: None,
+					front_face: wgpu::FrontFace::Ccw, // 2.
+					cull_mode: Some(wgpu::Face::Back),
+					// Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
+					polygon_mode: wgpu::PolygonMode::Fill,
+					// Requires Features::DEPTH_CLIP_CONTROL
+					unclipped_depth: false,
+					// Requires Features::CONSERVATIVE_RASTERIZATION
+					conservative: false,
+				},
+				depth_stencil: None, // 1.
+				multisample: wgpu::MultisampleState {
+					count: 1, // 2.
+					mask: !0, // 3.
+					alpha_to_coverage_enabled: false, // 4.
+				},
+				multiview: None, // 5.
+				cache: None, // 6.
+			});
+
+			log::debug!("Instantiated renderer");
 			Self {
 				surface,
 				device,
@@ -86,34 +141,27 @@ impl Renderer {
 				config,
 				size,
 				window,
+				render_pipeline
 			}
-		}.block_on()
+		}.block_on();
 	}
 
 	pub fn handle_event(&mut self, event: WindowEvent, event_loop: &ActiveEventLoop) {
 		match event {
 			WindowEvent::RedrawRequested => {
-				// This tells winit that we want another frame after this one
 				self.window.request_redraw();
-
-				/*if !surface_configured {
-					return;
-				}*/
 
 				self.update();
 				match self.render() {
 					Ok(_) => {}
-					// Reconfigure the surface if it's lost or outdated
 					Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+						// Reconfigure the surface if it's lost or outdated
 						self.resize(self.size)
 					}
-					// The system is out of memory, we should probably quit
 					Err(wgpu::SurfaceError::OutOfMemory) => {
 						log::error!("OutOfMemory");
 						event_loop.exit();
 					}
-
-					// This happens when the a frame takes too long to present
 					Err(wgpu::SurfaceError::Timeout) => {
 						log::warn!("Surface timeout")
 					}
@@ -123,6 +171,7 @@ impl Renderer {
 			WindowEvent::Resized(physical_size) => {
 				self.resize(physical_size);
 			}
+
 			_ => {}
 		}
 	}
@@ -134,11 +183,6 @@ impl Renderer {
 			self.config.height = new_size.height;
 			self.surface.configure(&self.device, &self.config);
 		}
-	}
-
-	// processes an event?
-	pub fn input(&mut self, event: &WindowEvent) -> bool {
-		return false; // TODO update this when we want to capture events
 	}
 
 	fn update(&mut self) {
@@ -158,7 +202,7 @@ impl Renderer {
 				label: Some("Render Encoder"),
 			});
 
-		let render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+		let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 			label: Some("Render Pass"),
 			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
 				view: &view,
@@ -177,6 +221,8 @@ impl Renderer {
 			occlusion_query_set: None,
 			timestamp_writes: None,
 		});
+		render_pass.set_pipeline(&self.render_pipeline); // 2.
+		render_pass.draw(0..3, 0..1); // 3.
 		drop(render_pass);
 
 		self.queue.submit(std::iter::once(encoder.finish()));
@@ -186,63 +232,3 @@ impl Renderer {
 	}
 }
 
-/// Application handler struct
-pub struct Application {
-	window: Option<Arc<Window>>,
-	renderer: Option<Renderer>,
-}
-impl Application {
-	/// Application constructor
-	pub fn uninitialized() -> Application {
-		Self {
-			window: None,
-			renderer: None,
-		}
-	}
-
-	/// Creates the window and the renderer, needs to be invoked after the first "resumed" event
-	fn initialize(&mut self, event_loop: &ActiveEventLoop) {
-		let window_attributes = Window::default_attributes()
-			.with_resizable(true)
-			.with_title("Rust graphics test")
-			.with_active(true);
-
-		let window = Arc::new(event_loop.create_window(window_attributes).expect("Failed to create window"));
-		self.renderer = Some(Renderer::new(Arc::clone(&window)));
-	}
-}
-impl ApplicationHandler for Application {
-	fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-		if self.renderer.is_none() {
-			self.initialize(event_loop)
-		}
-	}
-
-	fn window_event(
-		&mut self,
-		event_loop: &ActiveEventLoop,
-		window_id: WindowId,
-		event: WindowEvent,
-	) {
-		//println!("Window Event: {:?}", event);
-		if let Some(renderer) = self.renderer.as_mut() {
-			if window_id == renderer.window.id() {
-				renderer.handle_event(event, event_loop);
-			}
-		}
-	}
-
-	// When the app has been suspended
-	fn suspended(&mut self, event_loop: &ActiveEventLoop) {
-		println!("Suspended");
-	}
-
-	// event loop is exiting
-	fn exiting(&mut self, event_loop: &ActiveEventLoop) {
-		println!("Exiting");
-	}
-
-	// received a memory warning
-	fn memory_warning(&mut self, event_loop: &ActiveEventLoop) {}
-
-}
