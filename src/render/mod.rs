@@ -25,7 +25,7 @@ pub struct Renderer {
 	device: wgpu::Device,
 	queue: wgpu::Queue,
 	config: wgpu::SurfaceConfiguration,
-	size: winit::dpi::PhysicalSize<u32>,
+	pub size: winit::dpi::PhysicalSize<u32>,
 	pub window: Arc<Window>,
 	render_pipeline: wgpu::RenderPipeline,
 	camera: Camera,
@@ -231,36 +231,6 @@ impl Renderer {
 		}.block_on();
 	}
 
-	pub fn handle_event(&mut self, event: WindowEvent, event_loop: &ActiveEventLoop) {
-		match event {
-			WindowEvent::RedrawRequested => {
-				self.window.request_redraw();
-
-				self.update();
-				match self.render() {
-					Ok(_) => {}
-					Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
-						// Reconfigure the surface if it's lost or outdated
-						self.resize(self.size)
-					}
-					Err(wgpu::SurfaceError::OutOfMemory) => {
-						log::error!("OutOfMemory");
-						event_loop.exit();
-					}
-					Err(wgpu::SurfaceError::Timeout) => {
-						log::warn!("Surface timeout")
-					}
-				}
-			}
-			WindowEvent::CloseRequested => event_loop.exit(),
-			WindowEvent::Resized(physical_size) => {
-				self.resize(physical_size);
-			}
-
-			_ => {}
-		}
-	}
-
 	pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
 		if new_size.width > 0 && new_size.height > 0 {
 			self.size = new_size;
@@ -274,7 +244,7 @@ impl Renderer {
 		//todo!()
 	}
 
-	fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+	pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
 		let output = self.surface.get_current_texture()?;
 		let view = output
 			.texture
