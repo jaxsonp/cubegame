@@ -1,14 +1,11 @@
-[package]
-name = "cubegame"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+resolver = "2"
+members = [
+    "cubegame", "cubegame-server",
+]
+default-members = ["cubegame"]
 
-[dependencies]
-bytemuck = { version = "1.21.0", features = ["derive"] }
-cgmath = "0.18"
-env_logger = "0.10"
-log = "0.4"
-pollster = "0.4"
-spin_sleep = "1.3"
-wgpu = "22.0"
-winit = { version = "0.30.8", features = ["rwh_05"] }
+[workspace.package]
+version = "0.1.0"
+authors = ["Jaxson Pahukula <jaxpahu@gmail.com>"]
+repository = "https://github.com/jaxsonp/cubegame"

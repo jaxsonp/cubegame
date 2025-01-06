@@ -1,4 +1,3 @@
-
 mod framerate;
 
 use winit::application::ApplicationHandler;
@@ -27,7 +26,9 @@ impl Application {
 
 	/// Creates the window and the renderer, needs to be invoked after the first "resumed" event
 	fn initialize(&mut self, event_loop: &ActiveEventLoop) {
-		let window = event_loop.create_window(self.window_attributes.clone()).expect("Failed to create window");
+		let window = event_loop
+			.create_window(self.window_attributes.clone())
+			.expect("Failed to create window");
 		self.renderer = Some(Renderer::new(window));
 	}
 
@@ -63,7 +64,7 @@ impl ApplicationHandler for Application {
 						Ok(_) => {}
 						Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
 							// Reconfigure the surface if it's lost or outdated
-							renderer.resize(renderer.size)
+							renderer.reconfigure()
 						}
 						Err(wgpu::SurfaceError::OutOfMemory) => {
 							log::error!("OutOfMemory");
@@ -78,7 +79,11 @@ impl ApplicationHandler for Application {
 				WindowEvent::Resized(physical_size) => {
 					renderer.resize(physical_size);
 				}
-
+				WindowEvent::KeyboardInput {
+					device_id,
+					event,
+					is_synthetic,
+				} => {}
 				_ => {}
 			}
 		}

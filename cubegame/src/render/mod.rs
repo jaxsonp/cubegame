@@ -1,9 +1,14 @@
 #![allow(unused)]
 
-mod mesh;
 mod camera;
+mod mesh;
 
 use std::sync::Arc;
+
+use nalgebra::{Point3, Vector3};
+use pollster::FutureExt as _;
+use wgpu::util::DeviceExt;
+use winit::event_loop::ControlFlow;
 use winit::{
 	application::ApplicationHandler,
 	dpi::LogicalSize,
@@ -12,25 +17,23 @@ use winit::{
 	keyboard::{KeyCode, PhysicalKey},
 	window::{Window, WindowAttributes, WindowId},
 };
-use pollster::FutureExt as _;
-use wgpu::util::DeviceExt;
-use winit::event_loop::ControlFlow;
 
-
-use mesh::{Mesh, vert::Vert};
 use camera::Camera;
+use mesh::{vert::Vert, Mesh};
 
 pub struct Renderer {
+	/// Winit window
+	pub window: Arc<Window>,
+	/// Rendering surface
 	surface: wgpu::Surface<'static>,
+	/// Connection to GPU
 	device: wgpu::Device,
+	/// Device command queue
 	queue: wgpu::Queue,
 	config: wgpu::SurfaceConfiguration,
-	pub size: winit::dpi::PhysicalSize<u32>,
-	pub window: Arc<Window>,
+	pub meshes: Vec<Mesh>,
 	render_pipeline: wgpu::RenderPipeline,
 	camera: Camera,
-	vertex_buffer: wgpu::Buffer,
-	index_buffer: wgpu::Buffer,
 	camera_buffer: wgpu::Buffer,
 	camera_bind_group: wgpu::BindGroup,
 }
@@ -65,7 +68,7 @@ impl Renderer {
 			let (device, queue) = adapter
 				.request_device(
 					&wgpu::DeviceDescriptor {
-						required_features: wgpu::Features::empty(),
+						required_features: wgpu::Features::POLYGON_MODE_LINE, // todo remove this (its only for debugging)
 						required_limits: wgpu::Limits::default(),
 						label: None,
 						// performance over efficiency for memory management
@@ -95,30 +98,15 @@ impl Renderer {
 				desired_maximum_frame_latency: 2,
 			};
 
-
-			let camera = Camera {
-				// position the camera 1 unit up and 2 units back
-				// +z is out of the screen
-				eye: (0.0, 1.0, 2.0).into(),
-				// make it look at the origin
-				target: (0.0, 0.0, 0.0).into(),
-				// which way is "up"
-				up: cgmath::Vector3::unit_y(),
-				aspect: config.width as f32 / config.height as f32,
-				fovy: 45.0,
-				near_z: 0.1,
-				far_z: 1000.0,
-			};
-			let camera_buffer = device.create_buffer_init(
-				&wgpu::util::BufferInitDescriptor {
-					label: Some("Camera Buffer"),
-					contents: bytemuck::cast_slice(&[camera.view_proj_matrix()]),
-					usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-				}
-			);
-			let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-				entries: &[
-					wgpu::BindGroupLayoutEntry {
+			let camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+				label: Some("Camera Buffer"),
+				size: (size_of::<[[f32; 4]; 4]>()) as u64,
+				usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+				mapped_at_creation: false,
+			});
+			let camera_bind_group_layout =
+				device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+					entries: &[wgpu::BindGroupLayoutEntry {
 						binding: 0,
 						visibility: wgpu::ShaderStages::VERTEX,
 						ty: wgpu::BindingType::Buffer {
@@ -127,18 +115,15 @@ impl Renderer {
 							min_binding_size: None,
 						},
 						count: None,
-					}
-				],
-				label: Some("camera_bind_group_layout"),
-			});
+					}],
+					label: Some("camera_bind_group_layout"),
+				});
 			let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
 				layout: &camera_bind_group_layout,
-				entries: &[
-					wgpu::BindGroupEntry {
-						binding: 0,
-						resource: camera_buffer.as_entire_binding(),
-					}
-				],
+				entries: &[wgpu::BindGroupEntry {
+					binding: 0,
+					resource: camera_buffer.as_entire_binding(),
+				}],
 				label: Some("camera_bind_group"),
 			});
 
@@ -147,9 +132,7 @@ impl Renderer {
 			let render_pipeline_layout =
 				device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 					label: Some("Render Pipeline Layout"),
-					bind_group_layouts: &[
-						&camera_bind_group_layout,
-					],
+					bind_group_layouts: &[&camera_bind_group_layout],
 					push_constant_ranges: &[],
 				});
 			let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -178,40 +161,41 @@ impl Renderer {
 					strip_index_format: None,
 					front_face: wgpu::FrontFace::Ccw, // front face is counter-clockwise
 					cull_mode: Some(wgpu::Face::Back), // back cull
-					polygon_mode: wgpu::PolygonMode::Fill,
+					polygon_mode: wgpu::PolygonMode::Line,
 					// Requires Features::DEPTH_CLIP_CONTROL
 					unclipped_depth: false,
 					// Requires Features::CONSERVATIVE_RASTERIZATION
 					conservative: false,
 				},
 				depth_stencil: None, // 1.
-				multisample: wgpu::MultisampleState { // idk about this stuff
+				multisample: wgpu::MultisampleState {
+					// idk about this stuff
 					count: 1,
 					mask: !0,
 					alpha_to_coverage_enabled: false,
 				},
 				multiview: None, // 5.
-				cache: None, // 6.
+				cache: None,     // 6.
 			});
 
-			// generating test mesh
-			let cube = Mesh::cube();
-			let vertex_buffer = device.create_buffer_init(
-				&wgpu::util::BufferInitDescriptor {
-					label: Some("Vertex Buffer"),
-					contents: bytemuck::cast_slice(cube.verts),
-					usage: wgpu::BufferUsages::VERTEX,
-				}
-			);
-			let index_buffer = device.create_buffer_init(
-				&wgpu::util::BufferInitDescriptor {
-					label: Some("Index Buffer"),
-					contents: bytemuck::cast_slice(cube.tris),
-					usage: wgpu::BufferUsages::INDEX,
-				}
-			);
+			// generating test scene
+			let mut meshes = Vec::new();
+			meshes.push(Mesh::test_cube(&device));
 
-
+			let camera = Camera {
+				eye: Point3::new(0.0, 1.0, 2.0),
+				target: Point3::new(0.0, 0.0, 0.0),
+				up: Vector3::new(0.0, 1.0, 0.0),
+				aspect: config.width as f32 / config.height as f32,
+				fovy: 45.0,
+				near_z: 0.1,
+				far_z: 1000.0,
+			};
+			queue.write_buffer(
+				&camera_buffer,
+				0,
+				bytemuck::cast_slice(&camera.view_proj_matrix()),
+			);
 
 			log::debug!("Instantiated renderer");
 			Self {
@@ -219,25 +203,30 @@ impl Renderer {
 				device,
 				queue,
 				config,
-				size,
 				window,
+				meshes,
 				render_pipeline,
 				camera,
-				vertex_buffer,
-				index_buffer,
 				camera_buffer,
 				camera_bind_group,
 			}
-		}.block_on();
+		}
+			.block_on();
 	}
 
 	pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
 		if new_size.width > 0 && new_size.height > 0 {
-			self.size = new_size;
+			//log::debug!("Resizing window ({:?})", new_size);
+			self.camera.aspect = new_size.width as f32 / new_size.height as f32;
 			self.config.width = new_size.width;
 			self.config.height = new_size.height;
-			self.surface.configure(&self.device, &self.config);
+
+			self.reconfigure()
 		}
+	}
+
+	pub fn reconfigure(&mut self) {
+		self.surface.configure(&self.device, &self.config);
 	}
 
 	fn update(&mut self) {
@@ -280,9 +269,9 @@ impl Renderer {
 		render_pass.set_pipeline(&self.render_pipeline);
 		render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
 
-		// giving buffers to pipeline
-		render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-		render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+		for mesh in self.meshes.iter() {
+			mesh.draw(&mut render_pass);
+		}
 
 		render_pass.draw_indexed(0..36, 0, 0..1);
 		drop(render_pass);
@@ -293,4 +282,3 @@ impl Renderer {
 		Ok(())
 	}
 }
-

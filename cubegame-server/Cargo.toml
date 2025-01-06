@@ -1,0 +1,8 @@
+[package]
+name = "cubegame-server"
+version.workspace = true
+authors.workspace = true
+repository.workspace = true
+edition = "2021"
+
+[dependencies]

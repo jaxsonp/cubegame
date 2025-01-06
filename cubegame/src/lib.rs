@@ -1,15 +1,14 @@
-
-mod render;
 mod application;
+pub mod player;
+mod util;
+pub mod render;
 
-use winit::{
-	window::Window,
-	event_loop::{ControlFlow, EventLoop},
-};
+use winit::{event_loop::{EventLoop, ControlFlow}, window::Window};
 
+pub use util::*;
 use application::Application;
 
-pub fn run() {
+pub fn run_client() {
 	env_logger::init();
 
 	let event_loop = EventLoop::new().unwrap();
@@ -29,4 +28,3 @@ pub fn run() {
 		.run_app(&mut application)
 		.expect("Event loop error");
 }
-
