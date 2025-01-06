@@ -1,4 +1,5 @@
 
+mod render;
 
 use winit::{
 	window::Window,
@@ -9,13 +10,12 @@ use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{WindowAttributes, WindowId};
 
-mod render;
 
 use render::Renderer;
 
 pub fn run() {
 	env_logger::init();
-	
+
 	let event_loop = EventLoop::new().unwrap();
 	event_loop.set_control_flow(ControlFlow::Poll);
 
@@ -26,7 +26,7 @@ pub fn run() {
 		.with_active(true);
 
 	let mut application = Application::new(window_attributes);
-	
+
 	log::info!("Starting");
 	event_loop
 		.run_app(&mut application)

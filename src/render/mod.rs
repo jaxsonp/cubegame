@@ -1,6 +1,7 @@
 #![allow(unused)]
 
 mod mesh;
+mod camera;
 
 use std::sync::Arc;
 use winit::{
@@ -12,7 +13,12 @@ use winit::{
 	window::{Window, WindowAttributes, WindowId},
 };
 use pollster::FutureExt as _;
+use wgpu::util::DeviceExt;
 use winit::event_loop::ControlFlow;
+
+
+use mesh::{Mesh, vert::Vert};
+use camera::Camera;
 
 pub struct Renderer {
 	surface: wgpu::Surface<'static>,
@@ -22,6 +28,11 @@ pub struct Renderer {
 	size: winit::dpi::PhysicalSize<u32>,
 	pub window: Arc<Window>,
 	render_pipeline: wgpu::RenderPipeline,
+	camera: Camera,
+	vertex_buffer: wgpu::Buffer,
+	index_buffer: wgpu::Buffer,
+	camera_buffer: wgpu::Buffer,
+	camera_bind_group: wgpu::BindGroup,
 }
 
 impl Renderer {
@@ -84,12 +95,61 @@ impl Renderer {
 				desired_maximum_frame_latency: 2,
 			};
 
-			// setting up shaders
+
+			let camera = Camera {
+				// position the camera 1 unit up and 2 units back
+				// +z is out of the screen
+				eye: (0.0, 1.0, 2.0).into(),
+				// make it look at the origin
+				target: (0.0, 0.0, 0.0).into(),
+				// which way is "up"
+				up: cgmath::Vector3::unit_y(),
+				aspect: config.width as f32 / config.height as f32,
+				fovy: 45.0,
+				near_z: 0.1,
+				far_z: 1000.0,
+			};
+			let camera_buffer = device.create_buffer_init(
+				&wgpu::util::BufferInitDescriptor {
+					label: Some("Camera Buffer"),
+					contents: bytemuck::cast_slice(&[camera.view_proj_matrix()]),
+					usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+				}
+			);
+			let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+				entries: &[
+					wgpu::BindGroupLayoutEntry {
+						binding: 0,
+						visibility: wgpu::ShaderStages::VERTEX,
+						ty: wgpu::BindingType::Buffer {
+							ty: wgpu::BufferBindingType::Uniform,
+							has_dynamic_offset: false,
+							min_binding_size: None,
+						},
+						count: None,
+					}
+				],
+				label: Some("camera_bind_group_layout"),
+			});
+			let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+				layout: &camera_bind_group_layout,
+				entries: &[
+					wgpu::BindGroupEntry {
+						binding: 0,
+						resource: camera_buffer.as_entire_binding(),
+					}
+				],
+				label: Some("camera_bind_group"),
+			});
+
+			// setting up render pipeline
 			let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
 			let render_pipeline_layout =
 				device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 					label: Some("Render Pipeline Layout"),
-					bind_group_layouts: &[],
+					bind_group_layouts: &[
+						&camera_bind_group_layout,
+					],
 					push_constant_ranges: &[],
 				});
 			let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -97,14 +157,16 @@ impl Renderer {
 				layout: Some(&render_pipeline_layout),
 				vertex: wgpu::VertexState {
 					module: &shader,
-					entry_point: "vs_main", // 1.
-					buffers: &[], // 2.
+					entry_point: "vs_main",
+					buffers: &[
+						Vert::desc(), // vert buffer
+					],
 					compilation_options: wgpu::PipelineCompilationOptions::default(),
 				},
-				fragment: Some(wgpu::FragmentState { // 3.
+				fragment: Some(wgpu::FragmentState {
 					module: &shader,
 					entry_point: "fs_main",
-					targets: &[Some(wgpu::ColorTargetState { // 4.
+					targets: &[Some(wgpu::ColorTargetState {
 						format: config.format,
 						blend: Some(wgpu::BlendState::REPLACE),
 						write_mask: wgpu::ColorWrites::ALL,
@@ -114,9 +176,8 @@ impl Renderer {
 				primitive: wgpu::PrimitiveState {
 					topology: wgpu::PrimitiveTopology::TriangleList, // 1.
 					strip_index_format: None,
-					front_face: wgpu::FrontFace::Ccw, // 2.
-					cull_mode: Some(wgpu::Face::Back),
-					// Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
+					front_face: wgpu::FrontFace::Ccw, // front face is counter-clockwise
+					cull_mode: Some(wgpu::Face::Back), // back cull
 					polygon_mode: wgpu::PolygonMode::Fill,
 					// Requires Features::DEPTH_CLIP_CONTROL
 					unclipped_depth: false,
@@ -124,14 +185,33 @@ impl Renderer {
 					conservative: false,
 				},
 				depth_stencil: None, // 1.
-				multisample: wgpu::MultisampleState {
-					count: 1, // 2.
-					mask: !0, // 3.
-					alpha_to_coverage_enabled: false, // 4.
+				multisample: wgpu::MultisampleState { // idk about this stuff
+					count: 1,
+					mask: !0,
+					alpha_to_coverage_enabled: false,
 				},
 				multiview: None, // 5.
 				cache: None, // 6.
 			});
+
+			// generating test mesh
+			let cube = Mesh::cube();
+			let vertex_buffer = device.create_buffer_init(
+				&wgpu::util::BufferInitDescriptor {
+					label: Some("Vertex Buffer"),
+					contents: bytemuck::cast_slice(cube.verts),
+					usage: wgpu::BufferUsages::VERTEX,
+				}
+			);
+			let index_buffer = device.create_buffer_init(
+				&wgpu::util::BufferInitDescriptor {
+					label: Some("Index Buffer"),
+					contents: bytemuck::cast_slice(cube.tris),
+					usage: wgpu::BufferUsages::INDEX,
+				}
+			);
+
+
 
 			log::debug!("Instantiated renderer");
 			Self {
@@ -141,7 +221,12 @@ impl Renderer {
 				config,
 				size,
 				window,
-				render_pipeline
+				render_pipeline,
+				camera,
+				vertex_buffer,
+				index_buffer,
+				camera_buffer,
+				camera_bind_group,
 			}
 		}.block_on();
 	}
@@ -202,6 +287,7 @@ impl Renderer {
 				label: Some("Render Encoder"),
 			});
 
+		// creating render pass
 		let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 			label: Some("Render Pass"),
 			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -221,8 +307,14 @@ impl Renderer {
 			occlusion_query_set: None,
 			timestamp_writes: None,
 		});
-		render_pass.set_pipeline(&self.render_pipeline); // 2.
-		render_pass.draw(0..3, 0..1); // 3.
+		render_pass.set_pipeline(&self.render_pipeline);
+		render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+
+		// giving buffers to pipeline
+		render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+		render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+
+		render_pass.draw_indexed(0..36, 0, 0..1);
 		drop(render_pass);
 
 		self.queue.submit(std::iter::once(encoder.finish()));
