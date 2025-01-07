@@ -1,9 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
-    "cubegame", "cubegame-server",
+    "cubegame_lib", "cubegame_client", "cubegame_server",
 ]
-default-members = ["cubegame"]
+default-members = ["cubegame_client"]
 
 [workspace.package]
 version = "0.1.0"

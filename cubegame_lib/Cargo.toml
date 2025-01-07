@@ -1,0 +1,13 @@
+[package]
+name = "cubegame-lib"
+edition = "2021"
+version.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+name = "cubegame_lib"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[dependencies]
