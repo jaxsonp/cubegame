@@ -27,14 +27,15 @@ impl FramerateManager {
 		self.min_frame_time = Duration::from_micros((1_000_000.0 / fps) as u64);
 	}
 
-	/// The magic
-	pub fn tick(&mut self) {
+	/// Sleeps to maintain fps and returns delta time in seconds
+	pub fn tick(&mut self) -> f32 {
 		// sleeping to hit target fps
 		let elapsed = self.last_frame.elapsed();
 		if elapsed < self.min_frame_time {
 			let remaining = self.min_frame_time - elapsed;
 			spin_sleep::sleep(remaining);
 		}
+		let delta = self.last_frame.elapsed();
 		self.last_frame = Instant::now();
 	
 		// counting fps
@@ -44,5 +45,7 @@ impl FramerateManager {
 			self.last_fps_check = Instant::now();
 		}
 		self.fps_counter += 1;
+
+		delta.as_secs_f32()
 	}
 }

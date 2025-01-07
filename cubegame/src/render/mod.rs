@@ -33,7 +33,7 @@ pub struct Renderer {
 	config: wgpu::SurfaceConfiguration,
 	pub meshes: Vec<Mesh>,
 	render_pipeline: wgpu::RenderPipeline,
-	camera: Camera,
+	pub camera: Camera,
 	camera_buffer: wgpu::Buffer,
 	camera_bind_group: wgpu::BindGroup,
 }
@@ -182,19 +182,11 @@ impl Renderer {
 			let mut meshes = Vec::new();
 			meshes.push(Mesh::test_cube(&device));
 
-			let camera = Camera {
-				eye: Point3::new(0.0, 1.0, 2.0),
-				target: Point3::new(0.0, 0.0, 0.0),
-				up: Vector3::new(0.0, 1.0, 0.0),
-				aspect: config.width as f32 / config.height as f32,
-				fovy: 45.0,
-				near_z: 0.1,
-				far_z: 1000.0,
-			};
-			queue.write_buffer(
-				&camera_buffer,
-				0,
-				bytemuck::cast_slice(&camera.view_proj_matrix()),
+			let camera = Camera::new(
+				size.width as f32 / size.height as f32,
+				70.0,
+				0.1,
+				1000.0,
 			);
 
 			log::debug!("Instantiated renderer");
@@ -234,6 +226,13 @@ impl Renderer {
 	}
 
 	pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+		// updating uniforms
+		self.queue.write_buffer(
+			&self.camera_buffer,
+			0,
+			bytemuck::cast_slice(&self.camera.view_proj_matrix()),
+		);
+		
 		let output = self.surface.get_current_texture()?;
 		let view = output
 			.texture

@@ -1,12 +1,12 @@
 mod application;
 pub mod player;
-mod util;
+pub mod util;
 pub mod render;
 
 use winit::{event_loop::{EventLoop, ControlFlow}, window::Window};
 
 pub use util::*;
-use application::Application;
+use application::ApplicationState;
 
 pub fn run_client() {
 	env_logger::init();
@@ -20,11 +20,10 @@ pub fn run_client() {
 		.with_title("Rust graphics test")
 		.with_active(true);
 
-	let mut application = Application::new(window_attributes);
-	application.set_max_fps(60);
+	let mut app = ApplicationState::new(window_attributes);
 
 	log::info!("Starting");
 	event_loop
-		.run_app(&mut application)
+		.run_app(&mut app)
 		.expect("Event loop error");
 }
