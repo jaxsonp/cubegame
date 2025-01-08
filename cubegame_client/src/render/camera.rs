@@ -1,14 +1,10 @@
-use nalgebra::{Matrix4, Point3, Vector3, geometry::Perspective3};
-use crate::{to_rads, player::Player};
+use crate::{player::Player};
+use nalgebra::{geometry::Perspective3, Matrix4, Point3, Vector3};
 
 /// Translates from opengl coord system to wgpu
 pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
-	1.0, 0.0, 0.0, 0.0,
-	0.0, 1.0, 0.0, 0.0,
-	0.0, 0.0, 0.5, 0.5,
-	0.0, 0.0, 0.0, 1.0,
+	1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.0, 1.0,
 );
-
 
 pub struct Camera {
 	/// position
@@ -17,7 +13,7 @@ pub struct Camera {
 	pub up: Vector3<f32>,
 	/// Aspect ratio, width to height
 	pub aspect: f32,
-	/// Y field of view
+	/// Y field of view (in degrees)
 	pub fovy: f32,
 	/// Near z value for clipping
 	pub near_z: f32,
@@ -41,7 +37,8 @@ impl Camera {
 	pub fn view_proj_matrix(&self) -> [[f32; 4]; 4] {
 		let target = self.eye + self.facing;
 		let view_mat = Matrix4::look_at_rh(&self.eye, &target, &self.up);
-		let proj_mat = Perspective3::new(self.aspect, to_rads(self.fovy), self.near_z, self.far_z).to_homogeneous();
+		let proj_mat = Perspective3::new(self.aspect, self.fovy.to_radians(), self.near_z, self.far_z)
+			.to_homogeneous();
 		(OPENGL_TO_WGPU_MATRIX * proj_mat * view_mat).into()
 	}
 

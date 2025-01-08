@@ -1,50 +1,48 @@
-#![allow(unused)]
-
 mod camera;
 mod mesh;
+mod texture;
 
-use std::sync::Arc;
+use std::{collections::HashMap, path::Path, sync::Arc};
 
-use nalgebra::{Point3, Vector3};
+use image::ImageReader;
 use pollster::FutureExt as _;
-use wgpu::util::DeviceExt;
-use winit::event_loop::ControlFlow;
-use winit::{
-	application::ApplicationHandler,
-	dpi::LogicalSize,
-	event::*,
-	event_loop::{ActiveEventLoop, EventLoop},
-	keyboard::{KeyCode, PhysicalKey},
-	window::{Window, WindowAttributes, WindowId},
-};
+use winit::window::Window;
 
+use crate::render::texture::DepthTexture;
 use camera::Camera;
+use cubegame_lib::blocks::*;
 use mesh::{vert::Vert, Mesh};
+use texture::LoadedTexture;
 
 pub struct Renderer {
-	/// Winit window
+	/// winit window needs to be an Arc because both this, the application, and the surface constructor (async) needs it
 	pub window: Arc<Window>,
 	/// Rendering surface
 	surface: wgpu::Surface<'static>,
+	/// Surface config if i had to guess
+	config: wgpu::SurfaceConfiguration,
 	/// Connection to GPU
 	device: wgpu::Device,
 	/// Device command queue
 	queue: wgpu::Queue,
-	config: wgpu::SurfaceConfiguration,
-	pub meshes: Vec<Mesh>,
+	/// Render pipeline (only one for now)
 	render_pipeline: wgpu::RenderPipeline,
+	/// Bind group that is set for every mesh
+	global_bind_group: wgpu::BindGroup,
+	/// Depth buffer texture (z buffer)
+	depth_texture: DepthTexture,
+	/// Meshes to render
+	pub meshes: Vec<Mesh>,
+	/// Loaded block textures
+	block_textures: HashMap<u8, LoadedTexture>,
+	/// Camera duh
 	pub camera: Camera,
 	camera_buffer: wgpu::Buffer,
-	camera_bind_group: wgpu::BindGroup,
 }
-
 impl Renderer {
-	pub fn new(window: Window) -> Renderer {
-		// window needs to be an Arc because both this struct and the surface constructor needs it
-		let window = Arc::new(window);
-
+	pub fn new(window: Arc<Window>) -> Result<Renderer, ()> {
 		// async block cus some of the GPU adapter stuff is async
-		return async move {
+		async move {
 			let size = window.inner_size();
 
 			let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -52,7 +50,6 @@ impl Renderer {
 				..Default::default()
 			});
 
-			// drawing target texture
 			let surface = instance.create_surface(window.clone()).unwrap();
 
 			// handle to GPU
@@ -64,11 +61,13 @@ impl Renderer {
 				})
 				.await
 				.unwrap();
+			let adapter_info = adapter.get_info();
+			log::debug!("Adapter: {} ({:?})", adapter_info.name, adapter_info.backend);
 
 			let (device, queue) = adapter
 				.request_device(
 					&wgpu::DeviceDescriptor {
-						required_features: wgpu::Features::POLYGON_MODE_LINE, // todo remove this (its only for debugging)
+						required_features: wgpu::Features::empty(),
 						required_limits: wgpu::Limits::default(),
 						label: None,
 						// performance over efficiency for memory management
@@ -97,14 +96,16 @@ impl Renderer {
 				view_formats: vec![],
 				desired_maximum_frame_latency: 2,
 			};
+			surface.configure(&device, &config);
 
+			// setting up global bind group
 			let camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
 				label: Some("Camera Buffer"),
-				size: (size_of::<[[f32; 4]; 4]>()) as u64,
+				size: size_of::<[[f32; 4]; 4]>() as u64,
 				usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
 				mapped_at_creation: false,
 			});
-			let camera_bind_group_layout =
+			let global_bind_group_layout =
 				device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
 					entries: &[wgpu::BindGroupLayoutEntry {
 						binding: 0,
@@ -116,39 +117,101 @@ impl Renderer {
 						},
 						count: None,
 					}],
-					label: Some("camera_bind_group_layout"),
+					label: Some("Global bind group layout"),
 				});
-			let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-				layout: &camera_bind_group_layout,
+			let global_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+				layout: &global_bind_group_layout,
 				entries: &[wgpu::BindGroupEntry {
 					binding: 0,
 					resource: camera_buffer.as_entire_binding(),
 				}],
-				label: Some("camera_bind_group"),
+				label: Some("Global bind group"),
 			});
 
+			// loading block textures
+			let texture_bind_group_layout =
+				device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+					entries: &[
+						wgpu::BindGroupLayoutEntry {
+							binding: 0,
+							visibility: wgpu::ShaderStages::FRAGMENT,
+							ty: wgpu::BindingType::Texture {
+								multisampled: false,
+								view_dimension: wgpu::TextureViewDimension::D2,
+								sample_type: wgpu::TextureSampleType::Float { filterable: true },
+							},
+							count: None,
+						},
+						wgpu::BindGroupLayoutEntry {
+							binding: 1,
+							visibility: wgpu::ShaderStages::FRAGMENT,
+							// This should match the filterable field of the
+							// corresponding Texture entry above.
+							ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+							count: None,
+						},
+					],
+					label: Some("Texture bind group layout"),
+				});
+			let mut block_textures: HashMap<u8, LoadedTexture> = HashMap::new();
+			for block in BLOCK_TYPES.iter() {
+				if block.is_air() {
+					continue; // no need to load a texture for air
+				}
+
+				// reading the image from file
+				let path = Path::new("./assets/").join(block.texture_path);
+				let img = match ImageReader::open(&path) {
+					Ok(img_reader) => match img_reader.decode() {
+						Ok(img) => img,
+						Err(e) => {
+							log::error!("Failed to decode asset \"{}\": {}", path.display(), e);
+							return Err(());
+						}
+					},
+					Err(e) => {
+						log::error!(
+							"Failed to load block texture for \"{}\" from \"{}\": {}",
+							block.name,
+							path.display(),
+							e
+						);
+						return Err(());
+					}
+				};
+				let loaded_texture = LoadedTexture::from_img(
+					img.to_rgba8(),
+					block.name,
+					&device,
+					&queue,
+					&texture_bind_group_layout,
+				);
+				block_textures.insert(block.id, loaded_texture);
+			}
+
 			// setting up render pipeline
-			let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
+			let vert_shader = device.create_shader_module(wgpu::include_wgsl!("shader_vert.wgsl"));
+			let frag_shader = device.create_shader_module(wgpu::include_wgsl!("shader_frag.wgsl"));
 			let render_pipeline_layout =
 				device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 					label: Some("Render Pipeline Layout"),
-					bind_group_layouts: &[&camera_bind_group_layout],
+					bind_group_layouts: &[&global_bind_group_layout, &texture_bind_group_layout],
 					push_constant_ranges: &[],
 				});
 			let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
 				label: Some("Render Pipeline"),
 				layout: Some(&render_pipeline_layout),
 				vertex: wgpu::VertexState {
-					module: &shader,
-					entry_point: "vs_main",
+					module: &vert_shader,
+					entry_point: "main",
 					buffers: &[
-						Vert::desc(), // vert buffer
+						Vert::buffer_layout(), // vert buffer
 					],
 					compilation_options: wgpu::PipelineCompilationOptions::default(),
 				},
 				fragment: Some(wgpu::FragmentState {
-					module: &shader,
-					entry_point: "fs_main",
+					module: &frag_shader,
+					entry_point: "main",
 					targets: &[Some(wgpu::ColorTargetState {
 						format: config.format,
 						blend: Some(wgpu::BlendState::REPLACE),
@@ -157,61 +220,67 @@ impl Renderer {
 					compilation_options: wgpu::PipelineCompilationOptions::default(),
 				}),
 				primitive: wgpu::PrimitiveState {
-					topology: wgpu::PrimitiveTopology::TriangleList, // 1.
+					topology: wgpu::PrimitiveTopology::TriangleList,
 					strip_index_format: None,
 					front_face: wgpu::FrontFace::Ccw, // front face is counter-clockwise
-					cull_mode: Some(wgpu::Face::Back), // back cull
-					polygon_mode: wgpu::PolygonMode::Line,
+					cull_mode: None,                  // Some(wgpu::Face::Back), // back cull
+					polygon_mode: wgpu::PolygonMode::Fill,
 					// Requires Features::DEPTH_CLIP_CONTROL
 					unclipped_depth: false,
 					// Requires Features::CONSERVATIVE_RASTERIZATION
 					conservative: false,
 				},
-				depth_stencil: None, // 1.
+				depth_stencil: Some(wgpu::DepthStencilState {
+					format: DepthTexture::FORMAT,
+					depth_write_enabled: true,
+					depth_compare: wgpu::CompareFunction::Less,
+					stencil: wgpu::StencilState::default(),
+					bias: wgpu::DepthBiasState::default(),
+				}),
 				multisample: wgpu::MultisampleState {
-					// idk about this stuff
+					// idek what this stuff does
 					count: 1,
 					mask: !0,
 					alpha_to_coverage_enabled: false,
 				},
-				multiview: None, // 5.
-				cache: None,     // 6.
+				multiview: None,
+				cache: None,
 			});
+
+			let depth_texture = DepthTexture::new(&device, &config);
 
 			// generating test scene
 			let mut meshes = Vec::new();
-			meshes.push(Mesh::test_cube(&device));
+			meshes.push(Mesh::test_cube(&device, 0.0));
+			meshes.push(Mesh::test_cube(&device, 2.0));
 
-			let camera = Camera::new(
-				size.width as f32 / size.height as f32,
-				70.0,
-				0.1,
-				1000.0,
-			);
+			let camera = Camera::new(size.width as f32 / size.height as f32, 70.0, 0.1, 1000.0);
 
-			log::debug!("Instantiated renderer");
-			Self {
+			Ok(Self {
 				surface,
 				device,
 				queue,
 				config,
 				window,
-				meshes,
 				render_pipeline,
+				depth_texture,
+				meshes,
+				block_textures,
 				camera,
 				camera_buffer,
-				camera_bind_group,
-			}
+				global_bind_group,
+			})
 		}
-			.block_on();
+			.block_on()
 	}
 
 	pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
 		if new_size.width > 0 && new_size.height > 0 {
-			//log::debug!("Resizing window ({:?})", new_size);
-			self.camera.aspect = new_size.width as f32 / new_size.height as f32;
 			self.config.width = new_size.width;
 			self.config.height = new_size.height;
+
+			self.camera.aspect = new_size.width as f32 / new_size.height as f32;
+			self.depth_texture = DepthTexture::new(&self.device, &self.config);
 
 			self.reconfigure()
 		}
@@ -221,10 +290,6 @@ impl Renderer {
 		self.surface.configure(&self.device, &self.config);
 	}
 
-	fn update(&mut self) {
-		//todo!()
-	}
-
 	pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
 		// updating uniforms
 		self.queue.write_buffer(
@@ -232,7 +297,7 @@ impl Renderer {
 			0,
 			bytemuck::cast_slice(&self.camera.view_proj_matrix()),
 		);
-		
+
 		let output = self.surface.get_current_texture()?;
 		let view = output
 			.texture
@@ -246,34 +311,47 @@ impl Renderer {
 			});
 
 		// creating render pass
-		let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-			label: Some("Render Pass"),
-			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-				view: &view,
-				resolve_target: None,
-				ops: wgpu::Operations {
-					load: wgpu::LoadOp::Clear(wgpu::Color {
-						r: 0.1,
-						g: 0.2,
-						b: 0.3,
-						a: 1.0,
+		{
+			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+				label: Some("Render Pass"),
+				color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+					view: &view,
+					resolve_target: None,
+					ops: wgpu::Operations {
+						load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
+						store: wgpu::StoreOp::Store,
+					},
+				})],
+				depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+					view: &self.depth_texture.texture_view,
+					depth_ops: Some(wgpu::Operations {
+						load: wgpu::LoadOp::Clear(1.0),
+						store: wgpu::StoreOp::Store,
 					}),
-					store: wgpu::StoreOp::Store,
-				},
-			})],
-			depth_stencil_attachment: None,
-			occlusion_query_set: None,
-			timestamp_writes: None,
-		});
-		render_pass.set_pipeline(&self.render_pipeline);
-		render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+					stencil_ops: None,
+				}),
+				occlusion_query_set: None,
+				timestamp_writes: None,
+			});
+			render_pass.set_pipeline(&self.render_pipeline);
 
-		for mesh in self.meshes.iter() {
-			mesh.draw(&mut render_pass);
+			// global bind group
+			render_pass.set_bind_group(0, &self.global_bind_group, &[]);
+
+			for mesh in self.meshes.iter() {
+				// TODO reduce redundant texture loads
+				// activating texture
+				let tex = &self.block_textures[&1];
+				render_pass.set_bind_group(1, &tex.bind_group, &[]);
+
+				// rendering mesh
+				mesh.draw(&mut render_pass);
+			}
+			// need to drop render pass before doing anything else w the encoder
 		}
 
-		render_pass.draw_indexed(0..36, 0, 0..1);
-		drop(render_pass);
+		// winit docs says to do this
+		self.window.pre_present_notify();
 
 		self.queue.submit(std::iter::once(encoder.finish()));
 		output.present();

@@ -1,5 +1,7 @@
 use std::time::{Duration, Instant};
 
+// TODO make framerate drop when minimized
+
 /// Struct for managing and calculating framerate
 pub struct FramerateManager {
 	min_frame_time: Duration,
@@ -28,6 +30,7 @@ impl FramerateManager {
 	}
 
 	/// Sleeps to maintain fps and returns delta time in seconds
+	/// TODO see if its better to use f64 for delta time
 	pub fn tick(&mut self) -> f32 {
 		// sleeping to hit target fps
 		let elapsed = self.last_frame.elapsed();

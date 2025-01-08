@@ -1,5 +1,6 @@
 mod framerate;
 
+use std::sync::Arc;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
@@ -11,23 +12,37 @@ use framerate::FramerateManager;
 /// Application handler struct
 pub struct Application {
 	renderer: Renderer,
+	/// Application window (needs to be arced because the renderer and the render surface
+	/// constructor (which is async) needs it
+	window: Arc<Window>,
 	pub framerate_manager: FramerateManager,
 	pub player: Player,
 }
 impl Application {
 	/// Application constructor
-	pub fn new(window: Window) -> Application {
+	pub fn new(window: Window) -> Result<Application, ()> {
+		let window = Arc::new(window);
+
 		let mut framerate_manager = FramerateManager::new();
 		framerate_manager.set_max_fps(60);
 
-		Self {
-			renderer: Renderer::new(window),
+		let renderer = match Renderer::new(window.clone()) {
+			Ok(renderer) => renderer,
+			Err(()) => {
+				return Err(());
+			}
+		};
+
+		Ok(Self {
+			window,
+			renderer,
 			framerate_manager,
 			player: Player::new(),
-		}
+		})
 	}
 
 	pub fn update(&mut self, dt: f32) {
+		self.window.set_title(format!("Cubegame ({} fps)", self.framerate_manager.current_fps).as_str());
 		self.player.update(dt);
 		self.renderer.camera.player_pov(&self.player);
 	}
@@ -54,7 +69,8 @@ impl ApplicationHandler for Application {
 				let dt = self.framerate_manager.tick();
 				self.update(dt);
 
-				self.renderer.window.request_redraw();
+				self.window.request_redraw();
+				
 				match self.renderer.render() {
 					Ok(_) => {}
 					Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
@@ -105,14 +121,25 @@ impl ApplicationState {
 		ApplicationState::Uninitialized(window_attributes)
 	}
 
-	fn initialize(&mut self, event_loop: &ActiveEventLoop) {
+	fn initialize(&mut self, event_loop: &ActiveEventLoop) -> Result<(), ()> {
 		if let ApplicationState::Uninitialized(window_attributes) = self {
 			let window = event_loop
 				.create_window(window_attributes.clone())
 				.expect("Failed to create window");
-			*self = ApplicationState::Initialized(Application::new(window));
+			match Application::new(window) {
+				Ok(app) => {
+					*self = ApplicationState::Initialized(app);
+					return Ok(());
+				}
+				Err(()) => {
+					log::error!("Error while initializing application");
+					event_loop.exit();
+					return Err(());
+				}
+			};
 		} else {
 			log::warn!("Tried to double initialize application state");
+			return Ok(());
 		}
 	}
 }
@@ -120,8 +147,11 @@ impl ApplicationHandler for ApplicationState {
 	fn resumed(&mut self, event_loop: &ActiveEventLoop) {
 		match self {
 			ApplicationState::Uninitialized(_) => {
-				self.initialize(event_loop);
-				self.resumed(event_loop);
+				// try to initialize
+				if self.initialize(event_loop).is_ok() {
+					// "resend" resume event if initialization was successful
+					self.resumed(event_loop);
+				}
 			}
 			ApplicationState::Initialized(application) => application.resumed(event_loop),
 		}
@@ -151,8 +181,6 @@ impl ApplicationHandler for ApplicationState {
 	fn exiting(&mut self, event_loop: &ActiveEventLoop) {
 		if let ApplicationState::Initialized(application) = self {
 			application.exiting(event_loop);
-		} else {
-			log::warn!("Exiting uninitialized application");
 		}
 	}
 

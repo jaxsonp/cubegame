@@ -8,9 +8,6 @@ use wgpu::{
 use vert::Vert;
 
 pub struct Mesh {
-	/*
-	pub verts: Box<[Vert]>,
-	pub tris: Box<[u32]>*/
 	pub n_verts: u32,
 	vertex_buffer: wgpu::Buffer,
 	pub n_tris: u32,
@@ -24,44 +21,140 @@ impl Mesh {
 	}
 
 	/// Generates a cube mesh for testing
-	pub fn test_cube(device: &Device) -> Mesh {
+	pub fn test_cube(device: &Device, x_off: f32) -> Mesh {
+		let mut verts: [Vert; 24] = [
+			// bottom face
+			Vert {
+				pos: [-0.5, -0.5, -0.5],
+				tex_coord: [0.0, 1.0],
+			},
+			Vert {
+				pos: [0.5, -0.5, -0.5],
+				tex_coord: [1.0, 1.0],
+			},
+			Vert {
+				pos: [0.5, -0.5, 0.5],
+				tex_coord: [1.0, 0.0],
+			},
+			Vert {
+				pos: [-0.5, -0.5, 0.5],
+				tex_coord: [0.0, 0.0],
+			},
+			// front face
+			Vert {
+				pos: [-0.5, -0.5, 0.5],
+				tex_coord: [0.0, 1.0],
+			},
+			Vert {
+				pos: [0.5, -0.5, 0.5],
+				tex_coord: [1.0, 1.0],
+			},
+			Vert {
+				pos: [0.5, 0.5, 0.5],
+				tex_coord: [1.0, 0.0],
+			},
+			Vert {
+				pos: [-0.5, 0.5, 0.5],
+				tex_coord: [0.0, 0.0],
+			},
+			// left face
+			Vert {
+				pos: [-0.5, -0.5, -0.5],
+				tex_coord: [0.0, 1.0],
+			},
+			Vert {
+				pos: [-0.5, -0.5, 0.5],
+				tex_coord: [1.0, 1.0],
+			},
+			Vert {
+				pos: [-0.5, 0.5, 0.5],
+				tex_coord: [1.0, 0.0],
+			},
+			Vert {
+				pos: [-0.5, 0.5, -0.5],
+				tex_coord: [0.0, 0.0],
+			},
+			// back face
+			Vert {
+				pos: [0.5, -0.5, -0.5],
+				tex_coord: [0.0, 1.0],
+			},
+			Vert {
+				pos: [-0.5, -0.5, -0.5],
+				tex_coord: [1.0, 1.0],
+			},
+			Vert {
+				pos: [-0.5, 0.5, -0.5],
+				tex_coord: [1.0, 0.0],
+			},
+			Vert {
+				pos: [0.5, 0.5, -0.5],
+				tex_coord: [0.0, 0.0],
+			},
+			// right face
+			Vert {
+				pos: [0.5, -0.5, 0.5],
+				tex_coord: [0.0, 1.0],
+			},
+			Vert {
+				pos: [0.5, -0.5, -0.5],
+				tex_coord: [1.0, 1.0],
+			},
+			Vert {
+				pos: [0.5, 0.5, -0.5],
+				tex_coord: [1.0, 0.0],
+			},
+			Vert {
+				pos: [0.5, 0.5, 0.5],
+				tex_coord: [0.0, 0.0],
+			},
+			// top face
+			Vert {
+				pos: [-0.5, 0.5, 0.5],
+				tex_coord: [0.0, 1.0],
+			},
+			Vert {
+				pos: [0.5, 0.5, 0.5],
+				tex_coord: [1.0, 1.0],
+			},
+			Vert {
+				pos: [0.5, 0.5, -0.5],
+				tex_coord: [1.0, 0.0],
+			},
+			Vert {
+				pos: [-0.5, 0.5, -0.5],
+				tex_coord: [0.0, 0.0],
+			},
+		];
+		for v in verts.iter_mut() {
+			v.pos[0] += x_off;
+		}
 		#[rustfmt::skip]
-        let verts = &[
-            Vert { pos: [-0.5, -0.5, -0.5], },
-            Vert { pos: [0.5, -0.5, -0.5], },
-            Vert { pos: [0.5, -0.5, 0.5], },
-            Vert { pos: [-0.5, -0.5, 0.5], },
-            Vert { pos: [-0.5, 0.5, -0.5], },
-            Vert { pos: [0.5, 0.5, -0.5], },
-            Vert { pos: [0.5, 0.5, 0.5], },
-            Vert { pos: [-0.5, 0.5, 0.5], },
-        ];
-		#[rustfmt::skip]
-        let indices = &[
+        let indices: [u32; 36] = [
             0, 1, 2,
 			0, 2, 3,
-			0, 4, 5,
-			0, 5, 1,
-			1, 5, 6,
-			1, 6, 2,
-			2, 6, 7,
-			2, 7, 3,
-			3, 7, 4,
-			3, 4, 0,
-			4, 6, 5,
-			4, 7, 6,
+			4, 5, 6,
+			4, 6, 7,
+			8, 9, 10,
+			8, 10, 11,
+			12, 13, 14,
+			12, 14, 15,
+			16, 17, 18,
+			16, 18, 19,
+			20, 21, 22,
+			20, 22, 23,
         ];
 		Self {
-			n_verts: 8,
+			n_verts: verts.len() as u32,
 			vertex_buffer: device.create_buffer_init(&BufferInitDescriptor {
 				label: Some("Mesh vertex buffer (test cube)"),
-				contents: bytemuck::cast_slice(verts),
+				contents: bytemuck::cast_slice(&verts),
 				usage: BufferUsages::VERTEX,
 			}),
-			n_tris: 12,
+			n_tris: indices.len() as u32 / 3,
 			index_buffer: device.create_buffer_init(&BufferInitDescriptor {
 				label: Some("Mesh index buffer (test cube)"),
-				contents: bytemuck::cast_slice(indices),
+				contents: bytemuck::cast_slice(&indices),
 				usage: BufferUsages::INDEX,
 			}),
 		}

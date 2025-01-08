@@ -5,7 +5,6 @@ use std::f32::consts::PI;
 use nalgebra::{Point3, Vector3, Rotation3};
 
 use controller::PlayerController;
-use crate::to_rads;
 
 pub struct Player {
 	/// position
@@ -36,6 +35,7 @@ impl Player {
 	}
 
 	pub fn handle_input(&mut self, event: &winit::event::WindowEvent) {
+		// TODO make movement be handled server side
 		self.controller.handle_input(event);
 	}
 
@@ -67,17 +67,17 @@ impl Player {
 			self.pos += -up * Self::MOVE_SPEED_VERTICAL * dt;
 		}
 		if self.controller.looking_up() {
-			self.facing_pitch += to_rads(Self::LOOK_SPEED) * dt;
+			self.facing_pitch += Self::LOOK_SPEED.to_radians() * dt;
 			self.facing_pitch = self.facing_pitch.clamp(-PI, PI);
 		} else if self.controller.looking_down() {
-			self.facing_pitch -= to_rads(Self::LOOK_SPEED) * dt;
+			self.facing_pitch -= Self::LOOK_SPEED.to_radians() * dt;
 			self.facing_pitch = self.facing_pitch.clamp(-PI, PI);
 		}
 		if self.controller.looking_left() {
-			self.facing_yaw += to_rads(Self::LOOK_SPEED) * dt;
+			self.facing_yaw += Self::LOOK_SPEED.to_radians() * dt;
 			self.facing_yaw %= PI * 2.0;
 		} else if self.controller.looking_right() {
-			self.facing_yaw -= to_rads(Self::LOOK_SPEED) * dt;
+			self.facing_yaw -= Self::LOOK_SPEED.to_radians() * dt;
 			self.facing_yaw %= PI * 2.0;
 		}
 	}

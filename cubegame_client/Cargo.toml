@@ -8,14 +8,18 @@ edition = "2021"
 
 [[bin]]
 name = "cubegame"
-path = "src/main.rs"
 
 [dependencies]
 bytemuck = { version = "1.21.0", features = ["derive"] }
+cubegame-lib = { path = "../cubegame_lib" }
 env_logger = "0.10"
+image = "0.25.5"
 log = "0.4"
 nalgebra = "0.33"
 pollster = "0.4"
 spin_sleep = "1.3"
 wgpu = "22.0"
 winit = { version = "0.30.8", features = ["rwh_05"] }
+
+[build-dependencies]
+fs_extra = "1.3"
