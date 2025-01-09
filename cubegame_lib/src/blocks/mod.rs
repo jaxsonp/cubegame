@@ -12,13 +12,13 @@ impl BlockType {
 		self.id == AIR_BLOCK_ID
 	}
 
-	pub fn from_id(id: BlockTypeID) -> BlockType {
+	pub fn from_id(id: BlockTypeID) -> &'static BlockType {
 		for t in BLOCK_TYPES.iter() {
 			if t.id == id {
-				return *t;
+				return t;
 			}
 		}
-		return BLOCK_TYPES[NULL_BLOCK_ID as usize];
+		return &BLOCK_TYPES[NULL_BLOCK_ID as usize];
 	}
 }
 

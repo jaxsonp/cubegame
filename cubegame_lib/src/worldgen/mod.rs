@@ -1,21 +1,15 @@
-use crate::data::BlockData;
-use crate::{data::ChunkData, BLOCKS_PER_CHUNK, CHUNK_WIDTH};
+use crate::{BlockData, ChunkData, ChunkPos, BLOCKS_PER_CHUNK, CHUNK_WIDTH};
 // TODO implement world generation
 
 /// Generates simple chunk for testing
-pub fn generate_chunk() -> ChunkData {
-	let mut blocks: Vec<BlockData> = Vec::with_capacity(BLOCKS_PER_CHUNK);
+pub fn generate_chunk(pos: ChunkPos) -> ChunkData {
+	let mut blocks = [BlockData { type_id: 0 }; BLOCKS_PER_CHUNK];
 	for i in 0..BLOCKS_PER_CHUNK {
-		blocks.push(if i < (3 * CHUNK_WIDTH * CHUNK_WIDTH) {
-			BlockData {
-				ty: 2
-			}
-		} else {
-			BlockData {
-				ty: 0
-			}
-		});
+		// generating 3 high stone floor
+		if i < (3 * CHUNK_WIDTH * CHUNK_WIDTH) {
+			blocks[i] = BlockData { type_id: 2 };
+		}
 	}
 
-	ChunkData { blocks }
+	ChunkData { pos, blocks }
 }

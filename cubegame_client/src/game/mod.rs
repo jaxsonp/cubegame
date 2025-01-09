@@ -1,6 +1,6 @@
 mod chunk;
 
-use cubegame_lib::worldgen;
+use cubegame_lib::{ChunkDeltaData, ChunkPos};
 
 use crate::player::Player;
 use chunk::LoadedChunk;
@@ -13,7 +13,7 @@ impl LoadedWorld {
 	pub fn new() -> Self {
 		LoadedWorld {
 			player: Player::new(),
-			chunk: LoadedChunk::new(worldgen::generate_chunk(), 0, 0),
+			chunk: LoadedChunk::load_from_delta(ChunkDeltaData::empty(ChunkPos(0, 0))),
 		}
 	}
 

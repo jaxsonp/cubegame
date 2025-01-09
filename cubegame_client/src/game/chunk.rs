@@ -1,39 +1,40 @@
-use crate::render::mesh::Mesh;
-use crate::render::Renderer;
-use cubegame_lib::{blocks::BlockType, data::ChunkData, BlockPos, BlockTypeID, CHUNK_WIDTH};
+use crate::render::{mesh::Mesh, Renderer};
+use cubegame_lib::blocks::AIR_BLOCK_ID;
+use cubegame_lib::{
+	worldgen, BlockData, ChunkData, ChunkDeltaData, LocalBlockPos, BLOCKS_PER_CHUNK, CHUNK_WIDTH,
+};
 
 pub struct LoadedChunk {
-	/// X positional index of this chunk
-	x_pos: i32,
-	/// Z positional index of this chunk
-	z_pos: i32,
+	/// Chunk data: blocks
+	pub data: ChunkData,
+	pub meshes: Vec<Mesh>,
 	/// Marks whether or not blocks in this chunk have been updated (needs to remesh)
 	pub needs_remesh: bool,
-	blocks: Vec<LoadedBlock>,
-	pub meshes: Vec<Mesh>,
 }
 impl LoadedChunk {
-	/// Loads new chunk from ChunkData with an x and z position
+	/// Loads new chunk from chunk data
 	///
 	/// (Does not generate meshes)
-	pub fn new(chunk_data: ChunkData, x_pos: i32, z_pos: i32) -> LoadedChunk {
-		let mut blocks = Vec::with_capacity(chunk_data.blocks.len());
+	pub fn load_from_delta(delta: ChunkDeltaData) -> LoadedChunk {
+		let chunk_pos = delta.pos;
 
-		// reading blocks from chunk data
-		for (i, block_data) in chunk_data.blocks.iter().enumerate() {
-			let x = i % CHUNK_WIDTH;
-			let z = (i / CHUNK_WIDTH) % CHUNK_WIDTH;
-			let y = i / (CHUNK_WIDTH * CHUNK_WIDTH);
-			let block = LoadedBlock::new(x as u8, y as u8, z as u8, block_data.ty);
-			blocks.push(block);
+		// data from the world generator
+		let worldgen_data = worldgen::generate_chunk(chunk_pos);
+
+		let mut block_data: [BlockData; BLOCKS_PER_CHUNK] = worldgen_data.blocks;
+
+		// overwriting block data with blocks from chunk delta
+		for (pos, data) in delta.blocks {
+			block_data[pos.to_index()] = data;
 		}
 
 		LoadedChunk {
-			x_pos,
-			z_pos,
-			needs_remesh: true,
-			blocks,
+			data: ChunkData {
+				pos: chunk_pos,
+				blocks: block_data,
+			},
 			meshes: Vec::new(),
+			needs_remesh: true,
 		}
 	}
 
@@ -41,34 +42,50 @@ impl LoadedChunk {
 	pub fn regenerate_meshes(&mut self, renderer: &Renderer) {
 		// TODO optimize
 		self.meshes.clear();
-		for block in self.blocks.iter() {
-			if block.ty.is_air() {
+		let mut total_verts = 0;
+		let mut total_tris = 0;
+		for (i, block) in self.data.blocks.iter().enumerate() {
+			if block.type_id == AIR_BLOCK_ID {
 				continue;
 			}
-			let (x, y, z) =
-				self.to_world_coords(block.pos);
-			self.meshes.push(Mesh::new_block(renderer, x, y, z));
+			let (x, y, z) = self.to_world_coords(LocalBlockPos::from_index(i));
+
+			let new_mesh = Mesh::new_block(renderer, x, y, z);
+			total_verts += new_mesh.n_verts;
+			total_tris += new_mesh.n_tris;
+			self.meshes.push(new_mesh);
 		}
 		self.needs_remesh = false;
+		log::debug!(
+			"Remeshed chunk at ({}, {}) - {} verts, {} tris",
+			self.data.pos.x(),
+			self.data.pos.z(),
+			total_verts,
+			total_tris
+		);
 	}
 
 	/// Converts local block coordinates to world coordinates
-	fn to_world_coords(&self, pos: BlockPos) -> (i32, i32, i32) {
+	fn to_world_coords(&self, block_pos: LocalBlockPos) -> (i32, i32, i32) {
 		let chunk_w = CHUNK_WIDTH as i32;
-		((pos.x() as i32) + self.x_pos * chunk_w, pos.y() as i32, (pos.z() as i32) + self.z_pos * chunk_w)
+		(
+			(block_pos.x() as i32) + self.data.pos.x() * chunk_w,
+			block_pos.y() as i32,
+			(block_pos.z() as i32) + self.data.pos.z() * chunk_w,
+		)
 	}
 }
 
-/// Represents a block within a loaded chunk
+/*/// Represents a block within a loaded chunk
 pub struct LoadedBlock {
-	pub pos: BlockPos,
-	pub ty: BlockType,
+	pub pos: LocalBlockPos,
+	pub type_id: BlockTypeID,
 }
 impl LoadedBlock {
-	pub fn new(x: u8, y: u8, z: u8, type_id: BlockTypeID) -> LoadedBlock {
+	pub fn new(pos: LocalBlockPos, type_id: BlockTypeID) -> LoadedBlock {
 		LoadedBlock {
-			pos: BlockPos::new(x, y, z),
-			ty: BlockType::from_id(type_id),
+			pos,
+			type_id,
 		}
 	}
-}
+}*/
