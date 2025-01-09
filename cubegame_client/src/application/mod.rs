@@ -1,12 +1,14 @@
 mod framerate;
 
 use std::sync::Arc;
-use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
-use winit::event_loop::ActiveEventLoop;
-use winit::window::{Window, WindowAttributes, WindowId};
+use winit::{
+	application::ApplicationHandler,
+	event::WindowEvent,
+	event_loop::ActiveEventLoop,
+	window::{Window, WindowAttributes, WindowId},
+};
 
-use crate::{player::Player, render::Renderer};
+use crate::{game::LoadedWorld, render::Renderer};
 use framerate::FramerateManager;
 
 /// Application handler struct
@@ -16,7 +18,7 @@ pub struct Application {
 	/// constructor (which is async) needs it
 	window: Arc<Window>,
 	pub framerate_manager: FramerateManager,
-	pub player: Player,
+	pub world: Option<LoadedWorld>,
 }
 impl Application {
 	/// Application constructor
@@ -26,6 +28,7 @@ impl Application {
 		let mut framerate_manager = FramerateManager::new();
 		framerate_manager.set_max_fps(60);
 
+		let world = Some(LoadedWorld::new());
 		let renderer = match Renderer::new(window.clone()) {
 			Ok(renderer) => renderer,
 			Err(()) => {
@@ -37,14 +40,17 @@ impl Application {
 			window,
 			renderer,
 			framerate_manager,
-			player: Player::new(),
+			world,
 		})
 	}
 
 	pub fn update(&mut self, dt: f32) {
-		self.window.set_title(format!("Cubegame ({} fps)", self.framerate_manager.current_fps).as_str());
-		self.player.update(dt);
-		self.renderer.camera.player_pov(&self.player);
+		self.window
+			.set_title(format!("Cubegame ({} fps)", self.framerate_manager.current_fps).as_str());
+		if let Some(world) = &mut self.world {
+			world.update(dt);
+			self.renderer.camera.player_pov(&world.player);
+		}
 	}
 }
 impl ApplicationHandler for Application {
@@ -62,7 +68,9 @@ impl ApplicationHandler for Application {
 			return;
 		}
 
-		self.player.handle_input(&event);
+		if let Some(world) = &mut self.world {
+			world.player.handle_input(&event);
+		}
 
 		match event {
 			WindowEvent::RedrawRequested => {
@@ -70,8 +78,14 @@ impl ApplicationHandler for Application {
 				self.update(dt);
 
 				self.window.request_redraw();
-				
-				match self.renderer.render() {
+
+				// remeshing world chunks if necessary
+				if let Some(world) = &mut self.world {
+					if world.chunk.needs_remesh {
+						world.chunk.regenerate_meshes(&self.renderer);
+					}
+				}
+				match self.renderer.render(&self.world) {
 					Ok(_) => {}
 					Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
 						// Reconfigure the surface if it's lost or outdated

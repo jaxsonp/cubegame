@@ -1,134 +1,55 @@
 pub mod vert;
 
-use wgpu::{
-	util::{BufferInitDescriptor, DeviceExt},
-	BufferUsages, Device, RenderPass,
-};
+use wgpu::{util::{BufferInitDescriptor, DeviceExt}, BufferUsages};
 
 use vert::Vert;
+use crate::render::Renderer;
 
 pub struct Mesh {
+	/// Number of verts
 	pub n_verts: u32,
-	vertex_buffer: wgpu::Buffer,
+	pub vertex_buffer: wgpu::Buffer,
+	/// Number of tris
 	pub n_tris: u32,
-	index_buffer: wgpu::Buffer,
+	pub index_buffer: wgpu::Buffer,
+	pub bind_group: wgpu::BindGroup,
 }
 impl Mesh {
-	pub fn draw(&self, render_pass: &mut RenderPass) {
-		render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-		render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-		render_pass.draw_indexed(0..(self.n_tris * 3), 0, 0..1);
-	}
-
-	/// Generates a cube mesh for testing
-	pub fn test_cube(device: &Device, x_off: f32) -> Mesh {
-		let mut verts: [Vert; 24] = [
+	/// Generates a new cube mesh at a given position
+	pub fn new_block(renderer: &Renderer, x: i32, y: i32, z: i32) -> Mesh {
+		#[rustfmt::skip]
+		let verts: [Vert; 24] = [
 			// bottom face
-			Vert {
-				pos: [-0.5, -0.5, -0.5],
-				tex_coord: [0.0, 1.0],
-			},
-			Vert {
-				pos: [0.5, -0.5, -0.5],
-				tex_coord: [1.0, 1.0],
-			},
-			Vert {
-				pos: [0.5, -0.5, 0.5],
-				tex_coord: [1.0, 0.0],
-			},
-			Vert {
-				pos: [-0.5, -0.5, 0.5],
-				tex_coord: [0.0, 0.0],
-			},
+			Vert { pos: [0.0, 0.0, 0.0], tex_coord: [0.0, 1.0], },
+			Vert { pos: [1.0, 0.0, 0.0], tex_coord: [1.0, 1.0], },
+			Vert { pos: [1.0, 0.0, 1.0], tex_coord: [1.0, 0.0], },
+			Vert { pos: [0.0, 0.0, 1.0], tex_coord: [0.0, 0.0], },
 			// front face
-			Vert {
-				pos: [-0.5, -0.5, 0.5],
-				tex_coord: [0.0, 1.0],
-			},
-			Vert {
-				pos: [0.5, -0.5, 0.5],
-				tex_coord: [1.0, 1.0],
-			},
-			Vert {
-				pos: [0.5, 0.5, 0.5],
-				tex_coord: [1.0, 0.0],
-			},
-			Vert {
-				pos: [-0.5, 0.5, 0.5],
-				tex_coord: [0.0, 0.0],
-			},
+			Vert { pos: [0.0, 0.0, 1.0], tex_coord: [0.0, 1.0], },
+			Vert { pos: [1.0, 0.0, 1.0], tex_coord: [1.0, 1.0], },
+			Vert { pos: [1.0, 1.0, 1.0], tex_coord: [1.0, 0.0], },
+			Vert { pos: [0.0, 1.0, 1.0], tex_coord: [0.0, 0.0], },
 			// left face
-			Vert {
-				pos: [-0.5, -0.5, -0.5],
-				tex_coord: [0.0, 1.0],
-			},
-			Vert {
-				pos: [-0.5, -0.5, 0.5],
-				tex_coord: [1.0, 1.0],
-			},
-			Vert {
-				pos: [-0.5, 0.5, 0.5],
-				tex_coord: [1.0, 0.0],
-			},
-			Vert {
-				pos: [-0.5, 0.5, -0.5],
-				tex_coord: [0.0, 0.0],
-			},
+			Vert { pos: [0.0, 0.0, 0.0], tex_coord: [0.0, 1.0], },
+			Vert { pos: [0.0, 0.0, 1.0], tex_coord: [1.0, 1.0], },
+			Vert { pos: [0.0, 1.0, 1.0], tex_coord: [1.0, 0.0], },
+			Vert { pos: [0.0, 1.0, 0.0], tex_coord: [0.0, 0.0], },
 			// back face
-			Vert {
-				pos: [0.5, -0.5, -0.5],
-				tex_coord: [0.0, 1.0],
-			},
-			Vert {
-				pos: [-0.5, -0.5, -0.5],
-				tex_coord: [1.0, 1.0],
-			},
-			Vert {
-				pos: [-0.5, 0.5, -0.5],
-				tex_coord: [1.0, 0.0],
-			},
-			Vert {
-				pos: [0.5, 0.5, -0.5],
-				tex_coord: [0.0, 0.0],
-			},
+			Vert { pos: [1.0, 0.0, 0.0], tex_coord: [0.0, 1.0], },
+			Vert { pos: [0.0, 0.0, 0.0], tex_coord: [1.0, 1.0], },
+			Vert { pos: [0.0, 1.0, 0.0], tex_coord: [1.0, 0.0], },
+			Vert { pos: [1.0, 1.0, 0.0], tex_coord: [0.0, 0.0], },
 			// right face
-			Vert {
-				pos: [0.5, -0.5, 0.5],
-				tex_coord: [0.0, 1.0],
-			},
-			Vert {
-				pos: [0.5, -0.5, -0.5],
-				tex_coord: [1.0, 1.0],
-			},
-			Vert {
-				pos: [0.5, 0.5, -0.5],
-				tex_coord: [1.0, 0.0],
-			},
-			Vert {
-				pos: [0.5, 0.5, 0.5],
-				tex_coord: [0.0, 0.0],
-			},
+			Vert { pos: [1.0, 0.0, 1.0], tex_coord: [0.0, 1.0], },
+			Vert { pos: [1.0, 0.0, 0.0], tex_coord: [1.0, 1.0], },
+			Vert { pos: [1.0, 1.0, 0.0], tex_coord: [1.0, 0.0], },
+			Vert { pos: [1.0, 1.0, 1.0], tex_coord: [0.0, 0.0], },
 			// top face
-			Vert {
-				pos: [-0.5, 0.5, 0.5],
-				tex_coord: [0.0, 1.0],
-			},
-			Vert {
-				pos: [0.5, 0.5, 0.5],
-				tex_coord: [1.0, 1.0],
-			},
-			Vert {
-				pos: [0.5, 0.5, -0.5],
-				tex_coord: [1.0, 0.0],
-			},
-			Vert {
-				pos: [-0.5, 0.5, -0.5],
-				tex_coord: [0.0, 0.0],
-			},
+			Vert { pos: [0.0, 1.0, 1.0], tex_coord: [0.0, 1.0], },
+			Vert { pos: [1.0, 1.0, 1.0], tex_coord: [1.0, 1.0], },
+			Vert { pos: [1.0, 1.0, 0.0], tex_coord: [1.0, 0.0], },
+			Vert { pos: [0.0, 1.0, 0.0], tex_coord: [0.0, 0.0], },
 		];
-		for v in verts.iter_mut() {
-			v.pos[0] += x_off;
-		}
 		#[rustfmt::skip]
         let indices: [u32; 36] = [
             0, 1, 2,
@@ -144,19 +65,36 @@ impl Mesh {
 			20, 21, 22,
 			20, 22, 23,
         ];
+
+		let pos = &[x as f32, y as f32, z as f32];
+		let pos_buffer = renderer.device.create_buffer_init(&BufferInitDescriptor {
+			label: Some("Mesh position buffer"),
+			contents: bytemuck::cast_slice(pos),
+			usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+		});
+		let bind_group = renderer.device.create_bind_group(&wgpu::BindGroupDescriptor {
+			layout: &renderer.mesh_bind_group_layout,
+			entries: &[wgpu::BindGroupEntry {
+				binding: 0,
+				resource: pos_buffer.as_entire_binding(),
+			}],
+			label: Some("Mesh local bind group"),
+		});
+
 		Self {
 			n_verts: verts.len() as u32,
-			vertex_buffer: device.create_buffer_init(&BufferInitDescriptor {
+			vertex_buffer: renderer.device.create_buffer_init(&BufferInitDescriptor {
 				label: Some("Mesh vertex buffer (test cube)"),
 				contents: bytemuck::cast_slice(&verts),
 				usage: BufferUsages::VERTEX,
 			}),
 			n_tris: indices.len() as u32 / 3,
-			index_buffer: device.create_buffer_init(&BufferInitDescriptor {
+			index_buffer: renderer.device.create_buffer_init(&BufferInitDescriptor {
 				label: Some("Mesh index buffer (test cube)"),
 				contents: bytemuck::cast_slice(&indices),
 				usage: BufferUsages::INDEX,
 			}),
+			bind_group,
 		}
 	}
 }

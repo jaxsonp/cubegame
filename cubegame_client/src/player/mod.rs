@@ -18,10 +18,10 @@ pub struct Player {
 }
 impl Player {
 	// movement speeds, in units per second
-	const MOVE_SPEED_FORWARD: f32 = 5.0;
-	const MOVE_SPEED_BACKWARD: f32 = 3.0;
-	const MOVE_SPEED_LATERAL: f32 = 3.0;
-	const MOVE_SPEED_VERTICAL: f32 = 4.0;
+	const MOVE_SPEED_FORWARD: f32 = 7.0;
+	const MOVE_SPEED_BACKWARD: f32 = 6.0;
+	const MOVE_SPEED_LATERAL: f32 = 6.0;
+	const MOVE_SPEED_VERTICAL: f32 = 6.0;
 	// look rotation speed, in degrees per second
 	const LOOK_SPEED: f32 = 90.0;
 

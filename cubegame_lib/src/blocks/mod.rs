@@ -1,8 +1,9 @@
+use super::BlockTypeID;
 use lazy_static::lazy_static;
 
 #[derive(Debug, Copy, Clone)]
 pub struct BlockType {
-	pub id: u8,
+	pub id: BlockTypeID,
 	pub name: &'static str,
 	pub texture_path: &'static str,
 }
@@ -10,10 +11,19 @@ impl BlockType {
 	pub fn is_air(&self) -> bool {
 		self.id == AIR_BLOCK_ID
 	}
+
+	pub fn from_id(id: BlockTypeID) -> BlockType {
+		for t in BLOCK_TYPES.iter() {
+			if t.id == id {
+				return *t;
+			}
+		}
+		return BLOCK_TYPES[NULL_BLOCK_ID as usize];
+	}
 }
 
-pub static AIR_BLOCK_ID: u8 = 0;
-pub static NULL_BLOCK_ID: u8 = 1;
+pub static AIR_BLOCK_ID: BlockTypeID = 0;
+pub static NULL_BLOCK_ID: BlockTypeID = 1;
 
 // TODO add better registering functionality
 lazy_static! {
@@ -36,5 +46,3 @@ lazy_static! {
 		},
 	];
 }
-
-

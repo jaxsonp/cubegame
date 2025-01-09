@@ -1,8 +1,12 @@
 mod application;
+pub mod game;
 pub mod player;
 pub mod render;
 
-use winit::{event_loop::{EventLoop, ControlFlow}, window::Window};
+use winit::{
+	event_loop::{ControlFlow, EventLoop},
+	window::Window,
+};
 
 use application::ApplicationState;
 
@@ -21,7 +25,5 @@ pub fn run_client() {
 	let mut app = ApplicationState::new(window_attributes);
 
 	log::info!("Starting");
-	event_loop
-		.run_app(&mut app)
-		.expect("Event loop error");
+	event_loop.run_app(&mut app).expect("Event loop error");
 }
