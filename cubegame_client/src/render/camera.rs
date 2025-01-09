@@ -1,5 +1,5 @@
-use crate::{player::Player};
 use nalgebra::{geometry::Perspective3, Matrix4, Point3, Vector3};
+use crate::game::player::Player;
 
 /// Translates from opengl coord system to wgpu
 pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(

@@ -8,7 +8,7 @@ use winit::{
 	window::{Window, WindowAttributes, WindowId},
 };
 
-use crate::{game::LoadedWorld, render::Renderer};
+use crate::{game::Game, render::Renderer};
 use framerate::FramerateManager;
 
 /// Application handler struct
@@ -18,7 +18,7 @@ pub struct Application {
 	/// constructor (which is async) needs it
 	window: Arc<Window>,
 	pub framerate_manager: FramerateManager,
-	pub world: Option<LoadedWorld>,
+	pub game: Option<Game>,
 }
 impl Application {
 	/// Application constructor
@@ -28,7 +28,7 @@ impl Application {
 		let mut framerate_manager = FramerateManager::new();
 		framerate_manager.set_max_fps(60);
 
-		let world = Some(LoadedWorld::new());
+		let world = Some(Game::new());
 		let renderer = match Renderer::new(window.clone()) {
 			Ok(renderer) => renderer,
 			Err(()) => {
@@ -40,14 +40,14 @@ impl Application {
 			window,
 			renderer,
 			framerate_manager,
-			world,
+			game: world,
 		})
 	}
 
 	pub fn update(&mut self, dt: f32) {
 		self.window
 			.set_title(format!("Cubegame ({} fps)", self.framerate_manager.current_fps).as_str());
-		if let Some(world) = &mut self.world {
+		if let Some(world) = &mut self.game {
 			world.update(dt);
 			self.renderer.camera.player_pov(&world.player);
 		}
@@ -68,7 +68,7 @@ impl ApplicationHandler for Application {
 			return;
 		}
 
-		if let Some(world) = &mut self.world {
+		if let Some(world) = &mut self.game {
 			world.player.handle_input(&event);
 		}
 
@@ -80,12 +80,12 @@ impl ApplicationHandler for Application {
 				self.window.request_redraw();
 
 				// remeshing world chunks if necessary
-				if let Some(world) = &mut self.world {
-					if world.chunk.needs_remesh {
-						world.chunk.regenerate_meshes(&self.renderer);
+				if let Some(game) = &mut self.game {
+					if game.world.chunk.needs_remesh {
+						game.world.chunk.regenerate_meshes(&self.renderer);
 					}
 				}
-				match self.renderer.render(&self.world) {
+				match self.renderer.render(&self.game) {
 					Ok(_) => {}
 					Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
 						// Reconfigure the surface if it's lost or outdated

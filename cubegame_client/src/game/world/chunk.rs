@@ -1,7 +1,7 @@
 use crate::render::{mesh::Mesh, Renderer};
-use cubegame_lib::blocks::AIR_BLOCK_ID;
 use cubegame_lib::{
-	worldgen, BlockData, ChunkData, ChunkDeltaData, LocalBlockPos, BLOCKS_PER_CHUNK, CHUNK_WIDTH,
+	blocks::AIR_BLOCK_ID, worldgen, BlockData, ChunkData, ChunkDeltaData, Direction, LocalBlockPos,
+	BLOCKS_PER_CHUNK, CHUNK_WIDTH,
 };
 
 pub struct LoadedChunk {
@@ -38,9 +38,8 @@ impl LoadedChunk {
 		}
 	}
 
-	/// Turns this chunk's loaded blocks into meshes
+	/// Turns this chunk's loaded blocks into meshes (aka remesh)
 	pub fn regenerate_meshes(&mut self, renderer: &Renderer) {
-		// TODO optimize
 		self.meshes.clear();
 		let mut total_verts = 0;
 		let mut total_tris = 0;
@@ -48,9 +47,21 @@ impl LoadedChunk {
 			if block.type_id == AIR_BLOCK_ID {
 				continue;
 			}
-			let (x, y, z) = self.to_world_coords(LocalBlockPos::from_index(i));
+			let local_pos = LocalBlockPos::from_index(i);
+			let (x, y, z) = self.to_world_coords(local_pos);
 
-			let new_mesh = Mesh::new_block(renderer, x, y, z);
+			// optimization: choosing which faces to render
+			let mut faces: Direction = Direction::all_flags();
+			for (_, direction) in Direction::flags() {
+				// for each direction, check if there is a neighbor in this chunk, and check if that neighbor is air
+				if let Some(neighbor) = local_pos.get_neighbor(*direction) {
+					if self.data.blocks[neighbor.to_index()].type_id != AIR_BLOCK_ID {
+						faces &= direction.not();
+					}
+				}
+			}
+
+			let new_mesh = Mesh::from_faces(renderer, faces, x, y, z);
 			total_verts += new_mesh.n_verts;
 			total_tris += new_mesh.n_tris;
 			self.meshes.push(new_mesh);

@@ -1,6 +1,5 @@
 mod application;
 pub mod game;
-pub mod player;
 pub mod render;
 
 use winit::{

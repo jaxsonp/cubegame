@@ -11,4 +11,5 @@ path = "src/lib.rs"
 crate-type = ["lib"]
 
 [dependencies]
+bitmask-enum = "2.2.5"
 lazy_static = "1.5"

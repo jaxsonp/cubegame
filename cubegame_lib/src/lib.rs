@@ -1,7 +1,9 @@
-use crate::blocks::AIR_BLOCK_ID;
-
 pub mod blocks;
 pub mod worldgen;
+
+use bitmask_enum::bitmask;
+
+use crate::blocks::AIR_BLOCK_ID;
 
 // constants
 pub const WORLD_HEIGHT: usize = 256;
@@ -10,6 +12,17 @@ pub const BLOCKS_PER_CHUNK: usize = CHUNK_WIDTH * CHUNK_WIDTH * WORLD_HEIGHT;
 
 // types
 pub type BlockTypeID = u8;
+
+#[bitmask(u8)]
+#[bitmask_config(flags_iter)]
+pub enum Direction {
+	PosX,
+	NegX,
+	PosY,
+	NegY,
+	PosZ,
+	NegZ,
+}
 
 /// Chunk indexing position (x and z coordinates)
 #[derive(Debug, Clone, Copy)]
@@ -50,6 +63,49 @@ impl LocalBlockPos {
 		(self.y() as usize) * CHUNK_WIDTH * CHUNK_WIDTH
 			+ (self.z() as usize) * CHUNK_WIDTH
 			+ (self.x() as usize)
+	}
+	/// Returns the position of the local block position adjacent in a certain direction
+	pub fn get_neighbor(&self, dir: Direction) -> Option<LocalBlockPos> {
+		match dir {
+			Direction::PosX => {
+				if (self.x() as usize) < (CHUNK_WIDTH - 1) {
+					return Some(LocalBlockPos::new(self.x() + 1, self.y(), self.z()));
+				}
+			}
+			Direction::NegX => {
+				if self.x() > 0 {
+					return Some(LocalBlockPos::new(self.x() - 1, self.y(), self.z()));
+				}
+			}
+			Direction::PosY => {
+				if (self.y() as usize) < (WORLD_HEIGHT - 1) {
+					return Some(LocalBlockPos {
+						xz: self.xz,
+						y: self.y + 1,
+					});
+				}
+			}
+			Direction::NegY => {
+				if self.y > 0 {
+					return Some(LocalBlockPos {
+						xz: self.xz,
+						y: self.y - 1,
+					});
+				}
+			}
+			Direction::PosZ => {
+				if (self.z() as usize) < (CHUNK_WIDTH - 1) {
+					return Some(LocalBlockPos::new(self.x(), self.y(), self.z() + 1));
+				}
+			}
+			Direction::NegZ => {
+				if self.z() > 0 {
+					return Some(LocalBlockPos::new(self.x(), self.y(), self.z() - 1));
+				}
+			}
+			_ => {}
+		}
+		None
 	}
 	pub fn x(&self) -> u8 {
 		(self.xz & 0b11110000) >> 4
@@ -93,6 +149,8 @@ pub struct BlockData {
 }
 impl Default for BlockData {
 	fn default() -> Self {
-		Self { type_id: AIR_BLOCK_ID }
+		Self {
+			type_id: AIR_BLOCK_ID,
+		}
 	}
 }

@@ -12,13 +12,13 @@ name = "cubegame"
 [dependencies]
 bytemuck = { version = "1.21.0", features = ["derive"] }
 cubegame-lib = { path = "../cubegame_lib" }
-env_logger = "0.10"
+env_logger = "0.11.6"
 image = "0.25.5"
 log = "0.4"
-nalgebra = "0.33"
-pollster = "0.4"
-spin_sleep = "1.3"
-wgpu = "22.0"
+nalgebra = "0.33.2"
+pollster = "0.4.0"
+spin_sleep = "1.3.0"
+wgpu = "22.1.0"
 winit = { version = "0.30.8", features = ["rwh_05"] }
 
 [build-dependencies]

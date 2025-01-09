@@ -1,19 +1,18 @@
-mod chunk;
+mod world;
+pub mod player;
 
-use cubegame_lib::{ChunkDeltaData, ChunkPos};
+use player::Player;
+use world::LoadedWorld;
 
-use crate::player::Player;
-use chunk::LoadedChunk;
-
-pub struct LoadedWorld {
+pub struct Game {
 	pub player: Player,
-	pub chunk: LoadedChunk,
+	pub world: LoadedWorld,
 }
-impl LoadedWorld {
+impl Game {
 	pub fn new() -> Self {
-		LoadedWorld {
+		Game {
 			player: Player::new(),
-			chunk: LoadedChunk::load_from_delta(ChunkDeltaData::empty(ChunkPos(0, 0))),
+			world: LoadedWorld::new(),
 		}
 	}
 

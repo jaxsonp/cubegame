@@ -8,11 +8,10 @@ use image::ImageReader;
 use pollster::FutureExt as _;
 use winit::window::Window;
 
-use crate::game::LoadedWorld;
-use crate::render::texture::DepthTexture;
+use crate::{game::Game, render::texture::DepthTexture};
 use camera::Camera;
 use cubegame_lib::blocks::*;
-use mesh::{vert::Vert, Mesh};
+use mesh::vert::Vert;
 use texture::LoadedTexture;
 
 pub struct Renderer {
@@ -34,8 +33,6 @@ pub struct Renderer {
 	mesh_bind_group_layout: wgpu::BindGroupLayout,
 	/// Depth buffer texture (z buffer)
 	depth_texture: DepthTexture,
-	/// Meshes to render
-	pub meshes: Vec<Mesh>,
 	/// Loaded block textures
 	block_textures: HashMap<u8, LoadedTexture>,
 	/// Fallback block texture
@@ -261,7 +258,7 @@ impl Renderer {
 				topology: wgpu::PrimitiveTopology::TriangleList,
 				strip_index_format: None,
 				front_face: wgpu::FrontFace::Ccw, // front face is counter-clockwise
-				cull_mode: None,                  // Some(wgpu::Face::Back), // back cull
+				cull_mode: Some(wgpu::Face::Back), // back cull
 				polygon_mode: wgpu::PolygonMode::Fill,
 				// Requires Features::DEPTH_CLIP_CONTROL
 				unclipped_depth: false,
@@ -287,7 +284,7 @@ impl Renderer {
 
 		let depth_texture = DepthTexture::new(&device, &config);
 
-		let mut renderer = Self {
+		Ok(Self {
 			surface,
 			device,
 			queue,
@@ -297,19 +294,11 @@ impl Renderer {
 			global_bind_group,
 			mesh_bind_group_layout,
 			depth_texture,
-			meshes: Vec::new(),
 			block_textures,
 			fallback_block_texture,
 			camera: Camera::new(size.width as f32 / size.height as f32, 70.0, 0.1, 1000.0),
 			camera_buffer,
-		};
-
-		// temp test scene
-		renderer.meshes.push(Mesh::new_block(&renderer, 0, 0, 0));
-		renderer.meshes.push(Mesh::new_block(&renderer, 1, 0, 0));
-		renderer.meshes.push(Mesh::new_block(&renderer, 1, 1, 0));
-
-		return Ok(renderer);
+		})
 	}
 
 	pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -331,7 +320,7 @@ impl Renderer {
 		self.surface.configure(&self.device, &self.config);
 	}
 
-	pub fn render(&mut self, world: &Option<LoadedWorld>) -> Result<(), wgpu::SurfaceError> {
+	pub fn render(&mut self, game: &Option<Game>) -> Result<(), wgpu::SurfaceError> {
 		// updating uniforms
 		self.queue.write_buffer(
 			&self.camera_buffer,
@@ -351,7 +340,7 @@ impl Renderer {
 				label: Some("Render Encoder"),
 			});
 
-		if let Some(world) = world {
+		if let Some(game) = game {
 			// creating render pass
 			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 				label: Some("Render Pass"),
@@ -379,7 +368,7 @@ impl Renderer {
 			// global bind group
 			render_pass.set_bind_group(0, &self.global_bind_group, &[]);
 
-			for mesh in world.chunk.meshes.iter() {
+			for mesh in game.world.chunk.meshes.iter() {
 				// TODO reduce redundant texture loads
 				// activating texture
 				let tex = &self.block_textures[&2];
