@@ -2,7 +2,7 @@ pub mod controller;
 
 use std::f32::consts::PI;
 
-use nalgebra::{Point3, Vector3, Rotation3};
+use nalgebra::{Point3, Rotation3, Vector3};
 
 use controller::PlayerController;
 

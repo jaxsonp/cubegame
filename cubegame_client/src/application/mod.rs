@@ -82,7 +82,14 @@ impl ApplicationHandler for Application {
 				// remeshing world chunks if necessary
 				if let Some(game) = &mut self.game {
 					if game.world.chunk.needs_remesh {
-						game.world.chunk.regenerate_meshes(&self.renderer);
+						if game.world.chunk.regenerate_meshes(&self.renderer).is_err() {
+							log::error!(
+								"Error while regenerating meshes for chunk ({:?})",
+								game.world.chunk.data.pos
+							);
+							event_loop.exit();
+							return;
+						}
 					}
 				}
 				match self.renderer.render(&self.game) {
@@ -143,7 +150,6 @@ impl ApplicationState {
 			match Application::new(window) {
 				Ok(app) => {
 					*self = ApplicationState::Initialized(app);
-					return Ok(());
 				}
 				Err(()) => {
 					log::error!("Error while initializing application");
@@ -153,8 +159,8 @@ impl ApplicationState {
 			};
 		} else {
 			log::warn!("Tried to double initialize application state");
-			return Ok(());
 		}
+		return Ok(());
 	}
 }
 impl ApplicationHandler for ApplicationState {

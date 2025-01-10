@@ -1,10 +1,14 @@
+pub mod atlas;
+
 use image::RgbaImage;
 use wgpu::{
 	BindGroupDescriptor, BindGroupLayout, Device, Queue, Sampler, SurfaceConfiguration, Texture,
 	TextureDescriptor, TextureFormat, TextureView, TextureViewDescriptor,
 };
 
-/// Represents a loaded asset texture, ready for use
+// TODO optimize using texture atlas
+
+/// Represents a loaded texture, ready for use with a render pass
 #[allow(dead_code)]
 pub struct LoadedTexture {
 	texture: Texture,
@@ -13,7 +17,7 @@ pub struct LoadedTexture {
 	pub bind_group: wgpu::BindGroup,
 }
 impl LoadedTexture {
-	pub fn from_img(
+	pub fn load_from_img(
 		img: RgbaImage,
 		name: &str,
 		device: &Device,

@@ -39,7 +39,8 @@ impl LoadedChunk {
 	}
 
 	/// Turns this chunk's loaded blocks into meshes (aka remesh)
-	pub fn regenerate_meshes(&mut self, renderer: &Renderer) {
+	pub fn regenerate_meshes(&mut self, renderer: &Renderer) -> Result<(), ()> {
+		// TODO remesh asynchronously
 		self.meshes.clear();
 		let mut total_verts = 0;
 		let mut total_tris = 0;
@@ -61,7 +62,7 @@ impl LoadedChunk {
 				}
 			}
 
-			let new_mesh = Mesh::from_faces(renderer, faces, x, y, z);
+			let new_mesh = Mesh::new_block_from_faces(renderer, faces, x, y, z, block.type_id)?;
 			total_verts += new_mesh.n_verts;
 			total_tris += new_mesh.n_tris;
 			self.meshes.push(new_mesh);
@@ -74,6 +75,7 @@ impl LoadedChunk {
 			total_verts,
 			total_tris
 		);
+		return Ok(());
 	}
 
 	/// Converts local block coordinates to world coordinates

@@ -1,5 +1,5 @@
-mod world;
 pub mod player;
+mod world;
 
 use player::Player;
 use world::LoadedWorld;

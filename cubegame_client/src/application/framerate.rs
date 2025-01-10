@@ -40,7 +40,7 @@ impl FramerateManager {
 		}
 		let delta = self.last_frame.elapsed();
 		self.last_frame = Instant::now();
-	
+
 		// counting fps
 		if self.last_fps_check.elapsed() >= Duration::from_secs(1) {
 			self.current_fps = self.fps_counter;

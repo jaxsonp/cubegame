@@ -22,8 +22,8 @@ impl BlockType {
 	}
 }
 
-pub static AIR_BLOCK_ID: BlockTypeID = 0;
-pub static NULL_BLOCK_ID: BlockTypeID = 1;
+pub static AIR_BLOCK_ID: BlockTypeID = 1;
+pub static NULL_BLOCK_ID: BlockTypeID = 0;
 
 // TODO add better registering functionality
 lazy_static! {
@@ -31,18 +31,23 @@ lazy_static! {
 	pub static ref BLOCK_TYPES: Vec<BlockType> = vec![
 		BlockType {
 			id: 0,
-			name: "air",
-			texture_path: "",
+			name: "null_block",
+			texture_path: "block_textures/null_block.png",
 		},
 		BlockType {
 			id: 1,
-			name: "null_block",
-			texture_path: "block_textures/null_block.png",
+			name: "air",
+			texture_path: "",
 		},
 		BlockType {
 			id: 2,
 			name: "stone_block",
 			texture_path: "block_textures/stone_block.png",
+		},
+		BlockType {
+			id: 3,
+			name: "dirt_block",
+			texture_path: "block_textures/dirt_block.png",
 		},
 	];
 }

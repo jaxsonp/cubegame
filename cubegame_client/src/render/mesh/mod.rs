@@ -1,12 +1,13 @@
 pub mod vert;
 
 use crate::render::Renderer;
-use cubegame_lib::Direction;
+use cubegame_lib::{BlockTypeID, Direction};
 use vert::Vert;
 use wgpu::{
 	util::{BufferInitDescriptor, DeviceExt},
 	BufferUsages,
 };
+use crate::render::texture::atlas::TextureAtlasKey;
 
 pub struct Mesh {
 	/// Number of verts
@@ -19,7 +20,7 @@ pub struct Mesh {
 }
 impl Mesh {
 	/// Generates a cube mesh with only certain faces
-	pub fn from_faces(renderer: &Renderer, faces: Direction, x: i32, y: i32, z: i32) -> Mesh {
+	pub fn new_block_from_faces(renderer: &Renderer, faces: Direction, x: i32, y: i32, z: i32, block_type_id: BlockTypeID) -> Result<Mesh, ()> {
 		// has capacity to fit all faces without reallocating
 		let mut n_verts = 0;
 		let mut verts: Vec<Vert> = Vec::with_capacity(24);
@@ -43,57 +44,124 @@ impl Mesh {
 
 		if faces.contains(Direction::PosX) {
 			// right face
-			#[rustfmt::skip]
+
 			add_face(&[
-				Vert { pos: [1.0, 0.0, 1.0], tex_coord: [0.0, 1.0] },
-				Vert { pos: [1.0, 0.0, 0.0], tex_coord: [1.0, 1.0] },
-				Vert { pos: [1.0, 1.0, 0.0], tex_coord: [1.0, 0.0] },
-				Vert { pos: [1.0, 1.0, 1.0], tex_coord: [0.0, 0.0] },
+				Vert {
+					pos: [1.0, 0.0, 1.0],
+					tex_coord: [0.0, 1.0],
+				},
+				Vert {
+					pos: [1.0, 0.0, 0.0],
+					tex_coord: [1.0, 1.0],
+				},
+				Vert {
+					pos: [1.0, 1.0, 0.0],
+					tex_coord: [1.0, 0.0],
+				},
+				Vert {
+					pos: [1.0, 1.0, 1.0],
+					tex_coord: [0.0, 0.0],
+				},
 			]);
 		}
 		if faces.contains(Direction::NegX) {
-			#[rustfmt::skip]
 			add_face(&[
-				Vert { pos: [0.0, 0.0, 0.0], tex_coord: [0.0, 1.0], },
-				Vert { pos: [0.0, 0.0, 1.0], tex_coord: [1.0, 1.0], },
-				Vert { pos: [0.0, 1.0, 1.0], tex_coord: [1.0, 0.0], },
-				Vert { pos: [0.0, 1.0, 0.0], tex_coord: [0.0, 0.0], },
+				Vert {
+					pos: [0.0, 0.0, 0.0],
+					tex_coord: [0.0, 1.0],
+				},
+				Vert {
+					pos: [0.0, 0.0, 1.0],
+					tex_coord: [1.0, 1.0],
+				},
+				Vert {
+					pos: [0.0, 1.0, 1.0],
+					tex_coord: [1.0, 0.0],
+				},
+				Vert {
+					pos: [0.0, 1.0, 0.0],
+					tex_coord: [0.0, 0.0],
+				},
 			]);
 		}
 		if faces.contains(Direction::PosY) {
-			#[rustfmt::skip]
 			add_face(&[
-				Vert { pos: [0.0, 1.0, 1.0], tex_coord: [0.0, 1.0], },
-				Vert { pos: [1.0, 1.0, 1.0], tex_coord: [1.0, 1.0], },
-				Vert { pos: [1.0, 1.0, 0.0], tex_coord: [1.0, 0.0], },
-				Vert { pos: [0.0, 1.0, 0.0], tex_coord: [0.0, 0.0], },
+				Vert {
+					pos: [0.0, 1.0, 1.0],
+					tex_coord: [0.0, 1.0],
+				},
+				Vert {
+					pos: [1.0, 1.0, 1.0],
+					tex_coord: [1.0, 1.0],
+				},
+				Vert {
+					pos: [1.0, 1.0, 0.0],
+					tex_coord: [1.0, 0.0],
+				},
+				Vert {
+					pos: [0.0, 1.0, 0.0],
+					tex_coord: [0.0, 0.0],
+				},
 			]);
 		}
 		if faces.contains(Direction::NegY) {
-			#[rustfmt::skip]
 			add_face(&[
-				Vert { pos: [0.0, 0.0, 0.0], tex_coord: [0.0, 1.0], },
-				Vert { pos: [1.0, 0.0, 0.0], tex_coord: [1.0, 1.0], },
-				Vert { pos: [1.0, 0.0, 1.0], tex_coord: [1.0, 0.0], },
-				Vert { pos: [0.0, 0.0, 1.0], tex_coord: [0.0, 0.0], },
+				Vert {
+					pos: [0.0, 0.0, 0.0],
+					tex_coord: [0.0, 1.0],
+				},
+				Vert {
+					pos: [1.0, 0.0, 0.0],
+					tex_coord: [1.0, 1.0],
+				},
+				Vert {
+					pos: [1.0, 0.0, 1.0],
+					tex_coord: [1.0, 0.0],
+				},
+				Vert {
+					pos: [0.0, 0.0, 1.0],
+					tex_coord: [0.0, 0.0],
+				},
 			]);
 		}
 		if faces.contains(Direction::PosZ) {
-			#[rustfmt::skip]
 			add_face(&[
-				Vert { pos: [0.0, 0.0, 1.0], tex_coord: [0.0, 1.0], },
-				Vert { pos: [1.0, 0.0, 1.0], tex_coord: [1.0, 1.0], },
-				Vert { pos: [1.0, 1.0, 1.0], tex_coord: [1.0, 0.0], },
-				Vert { pos: [0.0, 1.0, 1.0], tex_coord: [0.0, 0.0], },
+				Vert {
+					pos: [0.0, 0.0, 1.0],
+					tex_coord: [0.0, 1.0],
+				},
+				Vert {
+					pos: [1.0, 0.0, 1.0],
+					tex_coord: [1.0, 1.0],
+				},
+				Vert {
+					pos: [1.0, 1.0, 1.0],
+					tex_coord: [1.0, 0.0],
+				},
+				Vert {
+					pos: [0.0, 1.0, 1.0],
+					tex_coord: [0.0, 0.0],
+				},
 			]);
 		}
 		if faces.contains(Direction::NegZ) {
-			#[rustfmt::skip]
 			add_face(&[
-				Vert { pos: [1.0, 0.0, 0.0], tex_coord: [0.0, 1.0], },
-				Vert { pos: [0.0, 0.0, 0.0], tex_coord: [1.0, 1.0], },
-				Vert { pos: [0.0, 1.0, 0.0], tex_coord: [1.0, 0.0], },
-				Vert { pos: [1.0, 1.0, 0.0], tex_coord: [0.0, 0.0], },
+				Vert {
+					pos: [1.0, 0.0, 0.0],
+					tex_coord: [0.0, 1.0],
+				},
+				Vert {
+					pos: [0.0, 0.0, 0.0],
+					tex_coord: [1.0, 1.0],
+				},
+				Vert {
+					pos: [0.0, 1.0, 0.0],
+					tex_coord: [1.0, 0.0],
+				},
+				Vert {
+					pos: [1.0, 1.0, 0.0],
+					tex_coord: [0.0, 0.0],
+				},
 			]);
 		}
 
@@ -103,18 +171,36 @@ impl Mesh {
 			contents: bytemuck::cast_slice(pos),
 			usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
 		});
+		let rect = match renderer.block_texture_atlas.get_pos_of(TextureAtlasKey::Block(block_type_id)) {
+			Some(rect) => rect,
+			None => {
+				log::error!("Couldn't find position of block texture in texture atlas");
+				return Err(());
+			},
+		};
+		let atlas_pos_buffer = renderer.device.create_buffer_init(&BufferInitDescriptor {
+			label: Some("Mesh texture atlas position buffer"),
+			contents: bytemuck::cast_slice(rect),
+			usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+		});
 		let bind_group = renderer
 			.device
 			.create_bind_group(&wgpu::BindGroupDescriptor {
 				layout: &renderer.mesh_bind_group_layout,
-				entries: &[wgpu::BindGroupEntry {
-					binding: 0,
-					resource: pos_buffer.as_entire_binding(),
-				}],
+				entries: &[
+					wgpu::BindGroupEntry {
+						binding: 0,
+						resource: pos_buffer.as_entire_binding(),
+					},
+					wgpu::BindGroupEntry {
+						binding: 1,
+						resource: atlas_pos_buffer.as_entire_binding(),
+					},
+				],
 				label: Some("Mesh local bind group"),
 			});
 
-		Self {
+		Ok(Self {
 			n_verts,
 			vertex_buffer: renderer.device.create_buffer_init(&BufferInitDescriptor {
 				label: Some("Mesh vertex buffer"),
@@ -128,91 +214,6 @@ impl Mesh {
 				usage: BufferUsages::INDEX,
 			}),
 			bind_group,
-		}
-	}
-
-	/// Generates a new cube mesh at a given position
-	pub fn new_block(renderer: &Renderer, x: i32, y: i32, z: i32) -> Mesh {
-		#[rustfmt::skip]
-		let verts: [Vert; 24] = [
-			// bottom face
-			Vert { pos: [0.0, 0.0, 0.0], tex_coord: [0.0, 1.0], },
-			Vert { pos: [1.0, 0.0, 0.0], tex_coord: [1.0, 1.0], },
-			Vert { pos: [1.0, 0.0, 1.0], tex_coord: [1.0, 0.0], },
-			Vert { pos: [0.0, 0.0, 1.0], tex_coord: [0.0, 0.0], },
-			// front face
-			Vert { pos: [0.0, 0.0, 1.0], tex_coord: [0.0, 1.0], },
-			Vert { pos: [1.0, 0.0, 1.0], tex_coord: [1.0, 1.0], },
-			Vert { pos: [1.0, 1.0, 1.0], tex_coord: [1.0, 0.0], },
-			Vert { pos: [0.0, 1.0, 1.0], tex_coord: [0.0, 0.0], },
-			// left face
-			Vert { pos: [0.0, 0.0, 0.0], tex_coord: [0.0, 1.0], },
-			Vert { pos: [0.0, 0.0, 1.0], tex_coord: [1.0, 1.0], },
-			Vert { pos: [0.0, 1.0, 1.0], tex_coord: [1.0, 0.0], },
-			Vert { pos: [0.0, 1.0, 0.0], tex_coord: [0.0, 0.0], },
-			// back face
-			Vert { pos: [1.0, 0.0, 0.0], tex_coord: [0.0, 1.0], },
-			Vert { pos: [0.0, 0.0, 0.0], tex_coord: [1.0, 1.0], },
-			Vert { pos: [0.0, 1.0, 0.0], tex_coord: [1.0, 0.0], },
-			Vert { pos: [1.0, 1.0, 0.0], tex_coord: [0.0, 0.0], },
-			// right face
-			Vert { pos: [1.0, 0.0, 1.0], tex_coord: [0.0, 1.0], },
-			Vert { pos: [1.0, 0.0, 0.0], tex_coord: [1.0, 1.0], },
-			Vert { pos: [1.0, 1.0, 0.0], tex_coord: [1.0, 0.0], },
-			Vert { pos: [1.0, 1.0, 1.0], tex_coord: [0.0, 0.0], },
-			// top face
-			Vert { pos: [0.0, 1.0, 1.0], tex_coord: [0.0, 1.0], },
-			Vert { pos: [1.0, 1.0, 1.0], tex_coord: [1.0, 1.0], },
-			Vert { pos: [1.0, 1.0, 0.0], tex_coord: [1.0, 0.0], },
-			Vert { pos: [0.0, 1.0, 0.0], tex_coord: [0.0, 0.0], },
-		];
-		#[rustfmt::skip]
-        let indices: [u32; 36] = [
-            0, 1, 2,
-			0, 2, 3,
-			4, 5, 6,
-			4, 6, 7,
-			8, 9, 10,
-			8, 10, 11,
-			12, 13, 14,
-			12, 14, 15,
-			16, 17, 18,
-			16, 18, 19,
-			20, 21, 22,
-			20, 22, 23,
-        ];
-
-		let pos = &[x as f32, y as f32, z as f32];
-		let pos_buffer = renderer.device.create_buffer_init(&BufferInitDescriptor {
-			label: Some("Mesh position buffer"),
-			contents: bytemuck::cast_slice(pos),
-			usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-		});
-		let bind_group = renderer
-			.device
-			.create_bind_group(&wgpu::BindGroupDescriptor {
-				layout: &renderer.mesh_bind_group_layout,
-				entries: &[wgpu::BindGroupEntry {
-					binding: 0,
-					resource: pos_buffer.as_entire_binding(),
-				}],
-				label: Some("Mesh local bind group"),
-			});
-
-		Self {
-			n_verts: verts.len() as u32,
-			vertex_buffer: renderer.device.create_buffer_init(&BufferInitDescriptor {
-				label: Some("Mesh vertex buffer (test cube)"),
-				contents: bytemuck::cast_slice(&verts),
-				usage: BufferUsages::VERTEX,
-			}),
-			n_tris: indices.len() as u32 / 3,
-			index_buffer: renderer.device.create_buffer_init(&BufferInitDescriptor {
-				label: Some("Mesh index buffer (test cube)"),
-				contents: bytemuck::cast_slice(&indices),
-				usage: BufferUsages::INDEX,
-			}),
-			bind_group,
-		}
+		})
 	}
 }

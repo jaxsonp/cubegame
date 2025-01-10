@@ -2,9 +2,9 @@ mod camera;
 pub mod mesh;
 mod texture;
 
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 
-use image::ImageReader;
+use image::{ImageReader, RgbaImage};
 use pollster::FutureExt as _;
 use winit::window::Window;
 
@@ -12,7 +12,7 @@ use crate::{game::Game, render::texture::DepthTexture};
 use camera::Camera;
 use cubegame_lib::blocks::*;
 use mesh::vert::Vert;
-use texture::LoadedTexture;
+use texture::atlas::{TextureAtlas, TextureAtlasKey};
 
 pub struct Renderer {
 	/// winit window needs to be an Arc because both this, the application, and the surface constructor (async) needs it
@@ -33,12 +33,11 @@ pub struct Renderer {
 	mesh_bind_group_layout: wgpu::BindGroupLayout,
 	/// Depth buffer texture (z buffer)
 	depth_texture: DepthTexture,
-	/// Loaded block textures
-	block_textures: HashMap<u8, LoadedTexture>,
-	/// Fallback block texture
-	fallback_block_texture: LoadedTexture,
+	/// Texture atlas for all block textures
+	block_texture_atlas: TextureAtlas,
 	/// Camera duh
 	pub camera: Camera,
+	/// Buffer for camera data to go in
 	camera_buffer: wgpu::Buffer,
 }
 impl Renderer {
@@ -138,16 +137,28 @@ impl Renderer {
 		});
 		let mesh_bind_group_layout =
 			device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-				entries: &[wgpu::BindGroupLayoutEntry {
-					binding: 0,
-					visibility: wgpu::ShaderStages::VERTEX,
-					ty: wgpu::BindingType::Buffer {
-						ty: wgpu::BufferBindingType::Uniform,
-						has_dynamic_offset: false,
-						min_binding_size: None,
+				entries: &[
+					wgpu::BindGroupLayoutEntry {
+						binding: 0,
+						visibility: wgpu::ShaderStages::VERTEX,
+						ty: wgpu::BindingType::Buffer {
+							ty: wgpu::BufferBindingType::Uniform,
+							has_dynamic_offset: false,
+							min_binding_size: None,
+						},
+						count: None,
 					},
-					count: None,
-				}],
+					wgpu::BindGroupLayoutEntry {
+						binding: 1,
+						visibility: wgpu::ShaderStages::FRAGMENT,
+						ty: wgpu::BindingType::Buffer {
+							ty: wgpu::BufferBindingType::Uniform,
+							has_dynamic_offset: false,
+							min_binding_size: None,
+						},
+						count: None,
+					},
+				],
 				label: Some("Local bind group layout"),
 			});
 
@@ -161,30 +172,29 @@ impl Renderer {
 						ty: wgpu::BindingType::Texture {
 							multisampled: false,
 							view_dimension: wgpu::TextureViewDimension::D2,
-							sample_type: wgpu::TextureSampleType::Float { filterable: true },
+							sample_type: wgpu::TextureSampleType::Float { filterable: false },
 						},
 						count: None,
 					},
 					wgpu::BindGroupLayoutEntry {
 						binding: 1,
 						visibility: wgpu::ShaderStages::FRAGMENT,
-						// This should match the filterable field of the
-						// corresponding Texture entry above.
-						ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+						ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
 						count: None,
 					},
 				],
 				label: Some("Texture bind group layout"),
 			});
-		let mut block_textures: HashMap<u8, LoadedTexture> =
-			HashMap::with_capacity(BLOCK_TYPES.len());
-		for block in BLOCK_TYPES.iter() {
-			if block.id == AIR_BLOCK_ID {
+		let mut ablock_textures: Vec<(TextureAtlasKey, RgbaImage)> =
+			Vec::with_capacity(BLOCK_TYPES.len());
+
+		for block_type in BLOCK_TYPES.iter() {
+			if block_type.id == AIR_BLOCK_ID {
 				continue; // no need to load a texture for air
 			}
 
-			// reading the image from file
-			let path = Path::new("./assets/").join(block.texture_path);
+			// atlas stuff
+			let path = Path::new("./assets/").join(block_type.texture_path);
 			let img = match ImageReader::open(&path) {
 				Ok(img_reader) => match img_reader.decode() {
 					Ok(img) => img,
@@ -196,29 +206,23 @@ impl Renderer {
 				Err(e) => {
 					log::error!(
 						"Failed to load block texture for \"{}\" from \"{}\": {}",
-						block.name,
+						block_type.name,
 						path.display(),
 						e
 					);
 					return Err(());
 				}
-			};
-			let loaded_texture = LoadedTexture::from_img(
-				img.to_rgba8(),
-				block.name,
-				&device,
-				&queue,
-				&texture_bind_group_layout,
-			);
-			block_textures.insert(block.id, loaded_texture);
-		}
-		let fallback_block_texture = match block_textures.remove(&NULL_BLOCK_ID) {
-			Some(tex) => tex,
-			None => {
-				log::error!("Fallback block texture ({NULL_BLOCK_ID}) not loaded");
-				return Err(());
 			}
-		};
+				.to_rgba8();
+			ablock_textures.push((TextureAtlasKey::Block(block_type.id), img));
+
+			if block_type.id == NULL_BLOCK_ID {
+				continue;
+			}
+		}
+
+		let block_texture_atlas = TextureAtlas::generate(ablock_textures, &device, &queue)?;
+		//
 
 		// setting up render pipeline
 		let vert_shader = device.create_shader_module(wgpu::include_wgsl!("shader_vert.wgsl"));
@@ -294,8 +298,7 @@ impl Renderer {
 			global_bind_group,
 			mesh_bind_group_layout,
 			depth_texture,
-			block_textures,
-			fallback_block_texture,
+			block_texture_atlas,
 			camera: Camera::new(size.width as f32 / size.height as f32, 70.0, 0.1, 1000.0),
 			camera_buffer,
 		})
@@ -368,12 +371,10 @@ impl Renderer {
 			// global bind group
 			render_pass.set_bind_group(0, &self.global_bind_group, &[]);
 
-			for mesh in game.world.chunk.meshes.iter() {
-				// TODO reduce redundant texture loads
-				// activating texture
-				let tex = &self.block_textures[&2];
-				render_pass.set_bind_group(1, &tex.bind_group, &[]);
+			// block texture atlas
+			render_pass.set_bind_group(1, &self.block_texture_atlas.texture.bind_group, &[]);
 
+			for mesh in game.world.chunk.meshes.iter() {
 				// setting per-mesh bind group
 				render_pass.set_bind_group(2, &mesh.bind_group, &[]);
 
