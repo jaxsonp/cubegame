@@ -10,3 +10,8 @@ name = "cubegame-server"
 path = "src/main.rs"
 
 [dependencies]
+cubegame-lib = { path = "../cubegame_lib" }
+log = "0.4"
+rmp-serde = "1.3.0"
+serde = { version = "1.0.217", features = ["derive"] }
+tungstenite = "0.26.1"

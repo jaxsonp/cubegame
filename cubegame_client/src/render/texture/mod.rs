@@ -6,8 +6,6 @@ use wgpu::{
 	TextureDescriptor, TextureFormat, TextureView, TextureViewDescriptor,
 };
 
-// TODO optimize using texture atlas
-
 /// Represents a loaded texture, ready for use with a render pass
 #[allow(dead_code)]
 pub struct LoadedTexture {

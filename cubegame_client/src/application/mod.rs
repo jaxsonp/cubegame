@@ -1,6 +1,11 @@
 mod framerate;
 
-use std::sync::Arc;
+use http::{uri, Uri};
+use std::{
+	net::{IpAddr, Ipv4Addr, SocketAddr},
+	sync::Arc,
+	thread,
+};
 use winit::{
 	application::ApplicationHandler,
 	event::WindowEvent,
@@ -8,7 +13,7 @@ use winit::{
 	window::{Window, WindowAttributes, WindowId},
 };
 
-use crate::{game::Game, render::Renderer};
+use crate::{game::Game, render::Renderer, INTEGRATED_SERVER_PORT};
 use framerate::FramerateManager;
 
 /// Application handler struct
@@ -28,7 +33,17 @@ impl Application {
 		let mut framerate_manager = FramerateManager::new();
 		framerate_manager.set_max_fps(60);
 
-		let world = Some(Game::new());
+		// TODO support connecting to external servers
+		// connecting to game server
+		let game_server_uri = Uri::builder()
+			.scheme("ws")
+			.authority(format!("localhost:{}", INTEGRATED_SERVER_PORT))
+			.path_and_query("/")
+			.build()
+			.unwrap();
+		let game = Some(Game::new(game_server_uri)?);
+
+		// initializing renderer
 		let renderer = match Renderer::new(window.clone()) {
 			Ok(renderer) => renderer,
 			Err(()) => {
@@ -40,7 +55,7 @@ impl Application {
 			window,
 			renderer,
 			framerate_manager,
-			game: world,
+			game,
 		})
 	}
 
@@ -54,9 +69,7 @@ impl Application {
 	}
 }
 impl ApplicationHandler for Application {
-	fn resumed(&mut self, _: &ActiveEventLoop) {
-		log::debug!("Resumed")
-	}
+	fn resumed(&mut self, _: &ActiveEventLoop) {}
 
 	fn window_event(
 		&mut self,
@@ -122,6 +135,10 @@ impl ApplicationHandler for Application {
 	// event loop is exiting
 	fn exiting(&mut self, _: &ActiveEventLoop) {
 		log::info!("Exiting");
+
+		if let Some(game) = &mut self.game {
+			game.shutdown();
+		}
 	}
 
 	// received a memory warning
@@ -144,9 +161,12 @@ impl ApplicationState {
 
 	fn initialize(&mut self, event_loop: &ActiveEventLoop) -> Result<(), ()> {
 		if let ApplicationState::Uninitialized(window_attributes) = self {
+			// creating window
 			let window = event_loop
 				.create_window(window_attributes.clone())
 				.expect("Failed to create window");
+
+			// Creating application and all its state and stuff
 			match Application::new(window) {
 				Ok(app) => {
 					*self = ApplicationState::Initialized(app);

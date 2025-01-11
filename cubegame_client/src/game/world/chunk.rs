@@ -6,7 +6,7 @@ use cubegame_lib::{
 
 pub struct LoadedChunk {
 	/// Chunk data: blocks
-	pub data: ChunkData,
+	pub data: Box<ChunkData>,
 	pub meshes: Vec<Mesh>,
 	/// Marks whether or not blocks in this chunk have been updated (needs to remesh)
 	pub needs_remesh: bool,
@@ -19,20 +19,15 @@ impl LoadedChunk {
 		let chunk_pos = delta.pos;
 
 		// data from the world generator
-		let worldgen_data = worldgen::generate_chunk(chunk_pos);
-
-		let mut block_data: [BlockData; BLOCKS_PER_CHUNK] = worldgen_data.blocks;
+		let mut chunk = worldgen::generate_chunk(chunk_pos);
 
 		// overwriting block data with blocks from chunk delta
 		for (pos, data) in delta.blocks {
-			block_data[pos.to_index()] = data;
+			chunk.blocks[pos.to_index()] = data;
 		}
 
 		LoadedChunk {
-			data: ChunkData {
-				pos: chunk_pos,
-				blocks: block_data,
-			},
+			data: chunk,
 			meshes: Vec::new(),
 			needs_remesh: true,
 		}

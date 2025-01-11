@@ -1,8 +1,9 @@
 pub mod blocks;
 pub mod worldgen;
+pub mod communication;
 
 use bitmask_enum::bitmask;
-
+use serde::{Deserialize, Serialize};
 use crate::blocks::AIR_BLOCK_ID;
 
 // constants
@@ -25,7 +26,7 @@ pub enum Direction {
 }
 
 /// Chunk indexing position (x and z coordinates)
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ChunkPos(pub i32, pub i32);
 impl ChunkPos {
 	pub fn x(&self) -> i32 {
@@ -35,7 +36,7 @@ impl ChunkPos {
 		self.1
 	}
 }
-#[derive(PartialEq, Copy, Clone, Debug, Eq, Hash)]
+#[derive(PartialEq, Copy, Clone, Debug, Eq, Hash, Serialize, Deserialize)]
 /// Local block position within a chunk
 pub struct LocalBlockPos {
 	/// Both the X and Z pos (most significant 4 bits are x, least significant 4 bits are z)
@@ -142,7 +143,7 @@ impl ChunkDeltaData {
 	}
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct BlockData {
 	/// Block type ID
 	pub type_id: BlockTypeID,
@@ -153,4 +154,9 @@ impl Default for BlockData {
 			type_id: AIR_BLOCK_ID,
 		}
 	}
+}
+
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+pub struct WorldGenesisData {
+	pub seed: u64,
 }
