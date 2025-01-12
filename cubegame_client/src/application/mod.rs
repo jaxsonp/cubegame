@@ -1,10 +1,7 @@
 mod framerate;
 
-use http::{uri, Uri};
 use std::{
-	net::{IpAddr, Ipv4Addr, SocketAddr},
 	sync::Arc,
-	thread,
 };
 use winit::{
 	application::ApplicationHandler,
@@ -35,7 +32,7 @@ impl Application {
 
 		// TODO support connecting to external servers
 		// connecting to game server
-		let game_server_uri = Uri::builder()
+		let game_server_uri = http::Uri::builder()
 			.scheme("ws")
 			.authority(format!("localhost:{}", INTEGRATED_SERVER_PORT))
 			.path_and_query("/")
@@ -94,16 +91,7 @@ impl ApplicationHandler for Application {
 
 				// remeshing world chunks if necessary
 				if let Some(game) = &mut self.game {
-					if game.world.chunk.needs_remesh {
-						if game.world.chunk.regenerate_meshes(&self.renderer).is_err() {
-							log::error!(
-								"Error while regenerating meshes for chunk ({:?})",
-								game.world.chunk.data.pos
-							);
-							event_loop.exit();
-							return;
-						}
-					}
+					game.check_remesh(&self.renderer);
 				}
 				match self.renderer.render(&self.game) {
 					Ok(_) => {}

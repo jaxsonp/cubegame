@@ -62,24 +62,23 @@ impl LoadedChunk {
 			total_tris += new_mesh.n_tris;
 			self.meshes.push(new_mesh);
 		}
-		self.needs_remesh = false;
-		log::debug!(
-			"Remeshed chunk at ({}, {}) - {} verts, {} tris",
-			self.data.pos.x(),
-			self.data.pos.z(),
+		/*log::debug!(
+			"Remeshed chunk at {} - {} verts, {} tris",
+			self.data.pos,
 			total_verts,
 			total_tris
-		);
-		return Ok(());
+		);*/
+		self.needs_remesh = false;
+		Ok(())
 	}
 
 	/// Converts local block coordinates to world coordinates
 	fn to_world_coords(&self, block_pos: LocalBlockPos) -> (i32, i32, i32) {
 		let chunk_w = CHUNK_WIDTH as i32;
 		(
-			(block_pos.x() as i32) + self.data.pos.x() * chunk_w,
+			(block_pos.x() as i32) + self.data.pos.x * chunk_w,
 			block_pos.y() as i32,
-			(block_pos.z() as i32) + self.data.pos.z() * chunk_w,
+			(block_pos.z() as i32) + self.data.pos.z * chunk_w,
 		)
 	}
 }

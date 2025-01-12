@@ -1,7 +1,13 @@
-use std::{io::Read, thread, net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener}};
+use std::{
+	net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener},
+	thread,
+};
 
+use cubegame_lib::{
+	communication::{Communication, ServerMessage, ServerResponse},
+	ChunkDeltaData,
+};
 use tungstenite::{accept, Message};
-use cubegame_lib::communication::message::ServerMessage;
 
 pub struct ServerState {}
 
@@ -33,8 +39,11 @@ pub fn run_server(port: u16) -> Result<(), ()> {
 
 				match received {
 					Message::Binary(data) => {
-						let msg: ServerMessage = rmp_serde::decode::from_slice(&data).unwrap();
-						log::info!("{:?}", msg);
+						let msg: ServerMessage = Communication::decode(&data);
+						//log::debug!("{:?}", msg);
+						websocket
+							.send(Message::binary(make_response(&msg).encode()))
+							.unwrap();
 					}
 					Message::Close(_) => {
 						log::info!("Connection closed");
@@ -48,4 +57,17 @@ pub fn run_server(port: u16) -> Result<(), ()> {
 		});
 	}
 	Ok(())
+}
+
+/// Function to handle messages
+fn make_response(msg: &ServerMessage) -> ServerResponse {
+	match msg {
+		ServerMessage::LoadChunk(chunk_pos) => {
+			ServerResponse::LoadChunkOK(ChunkDeltaData::empty(*chunk_pos))
+		}
+		_ => {
+			log::warn!("Unhandled message, acknowledging: {:?}", msg);
+			ServerResponse::Ack
+		}
+	}
 }

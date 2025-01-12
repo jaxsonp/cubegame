@@ -2,6 +2,7 @@ pub mod blocks;
 pub mod worldgen;
 pub mod communication;
 
+use std::fmt::Formatter;
 use bitmask_enum::bitmask;
 use serde::{Deserialize, Serialize};
 use crate::blocks::AIR_BLOCK_ID;
@@ -26,16 +27,17 @@ pub enum Direction {
 }
 
 /// Chunk indexing position (x and z coordinates)
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct ChunkPos(pub i32, pub i32);
-impl ChunkPos {
-	pub fn x(&self) -> i32 {
-		self.0
-	}
-	pub fn z(&self) -> i32 {
-		self.1
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Hash, Eq, PartialEq)]
+pub struct ChunkPos {
+	pub x: i32,
+	pub z: i32,
+}
+impl std::fmt::Display for ChunkPos {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		f.write_fmt(format_args!("({}, {})", self.x, self.z))
 	}
 }
+
 #[derive(PartialEq, Copy, Clone, Debug, Eq, Hash, Serialize, Deserialize)]
 /// Local block position within a chunk
 pub struct LocalBlockPos {
@@ -129,7 +131,7 @@ pub struct ChunkData {
 }
 
 /// Represents the difference of a chunk from its generated state
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkDeltaData {
 	pub pos: ChunkPos,
 	pub blocks: Vec<(LocalBlockPos, BlockData)>,
