@@ -188,7 +188,6 @@ impl Renderer {
 			});
 
 		let block_texture_atlas = TextureAtlas::generate(read_block_textures()?, &device, &queue)?;
-		//
 
 		// setting up render pipeline
 		let vert_shader = device.create_shader_module(wgpu::include_wgsl!("shader_vert.wgsl"));

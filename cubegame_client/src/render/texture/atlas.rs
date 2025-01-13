@@ -22,7 +22,6 @@ impl TextureAtlas {
 		device: &wgpu::Device,
 		queue: &wgpu::Queue,
 	) -> Result<TextureAtlas, ()> {
-		// TODO remove duplicate images
 		let max_size = device.limits().max_texture_dimension_2d as usize;
 
 		let get_hash_of_keys = |keys: &Vec<TextureAtlasKey>| -> u64 {
