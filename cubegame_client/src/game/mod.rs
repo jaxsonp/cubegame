@@ -1,21 +1,21 @@
 mod chunk;
 pub mod player;
 
-use cubegame_lib::ChunkPos;
-use http::Uri;
 use std::{
 	collections::HashMap,
 	time::Instant,
 	{net::TcpStream, time::Duration},
 };
+
+use cubegame_lib::{communication::*, ChunkPos};
+use http::Uri;
 use tungstenite::{connect, stream::MaybeTlsStream, Message, WebSocket};
 
-use crate::render::Renderer;
+use crate::render::mesh::mesher;
 use chunk::LoadedChunk;
-use cubegame_lib::communication::*;
 use player::Player;
 
-/// Radius of chunk render distance
+/// Chunk render distance radius
 const RENDER_DISTANCE: u32 = 4;
 
 pub struct Game {
@@ -29,6 +29,7 @@ pub struct Game {
 }
 impl Game {
 	pub fn new(server_url: Uri) -> Result<Game, ()> {
+		// connecting to server
 		let (socket, _addr) = match connect(&server_url) {
 			Ok(r) => r,
 			Err(e) => {
@@ -51,9 +52,9 @@ impl Game {
 		self.player.update(dt);
 
 		if self.last_slow_tick.elapsed() > Duration::from_secs(1) {
-			println!("player: {} {}", self.player.pos, self.player.chunk_pos());
 			self.last_slow_tick = Instant::now();
-			if self.load_chunks().is_err() {
+			let res = self.load_chunks();
+			if res.is_err() {
 				log::error!("Error while loading/unloading chunks");
 			}
 		}
@@ -82,7 +83,6 @@ impl Game {
 				if dist < RENDER_DISTANCE as f32 {
 					// chunk should be loaded
 					if !self.chunks.contains_key(&chunk) {
-						log::info!("Loading chunk {}", chunk);
 						self.send_msg(ServerMessage::LoadChunk(chunk));
 
 						let response = self.recv_response()?;
@@ -100,7 +100,6 @@ impl Game {
 				} else {
 					// chunk does not need to be loaded
 					if self.chunks.contains_key(&chunk) {
-						log::debug!("Unloading chunk {}", chunk);
 						let _unloaded_chunk = self.chunks.remove(&chunk);
 					}
 				}
@@ -109,12 +108,14 @@ impl Game {
 		Ok(())
 	}
 
-	pub fn check_remesh(&mut self, renderer: &Renderer) {
-		for (pos, chunk) in self.chunks.iter_mut() {
+	pub fn check_remesh(&mut self) {
+		for (_pos, chunk) in self.chunks.iter_mut() {
 			if chunk.needs_remesh {
-				if chunk.regenerate_meshes(renderer).is_err() {
+				/*if chunk.regenerate_meshes(renderer).is_err() {
 					log::error!("Failed to remesh chunk at {pos}");
-				}
+				}*/
+				chunk.meshes = mesher::mesh_chunk(&chunk.data);
+				chunk.needs_remesh = false;
 			}
 		}
 	}
@@ -132,7 +133,7 @@ impl Game {
 	fn recv_response(&mut self) -> Result<ServerResponse, ()> {
 		let received = self.socket.read().unwrap();
 		if let Message::Binary(data) = received {
-			Ok(rmp_serde::from_slice(&data).unwrap())
+			Ok(Communication::decode(&data))
 		} else {
 			log::error!("Received unexpected message: {:?}", received);
 			Err(())

@@ -4,15 +4,18 @@ mod texture;
 
 use std::{path::Path, sync::Arc};
 
+use cubegame_lib::blocks::{AIR_BLOCK_ID, BLOCK_TYPES, NULL_BLOCK_ID};
 use image::{ImageReader, RgbaImage};
-use pollster::FutureExt as _;
+use pollster::FutureExt;
 use winit::window::Window;
 
-use crate::{game::Game, render::texture::DepthTexture};
+use crate::game::Game;
 use camera::Camera;
-use cubegame_lib::blocks::*;
 use mesh::vert::Vert;
-use texture::atlas::{TextureAtlas, TextureAtlasKey};
+use texture::{
+	atlas::{TextureAtlas, TextureAtlasKey},
+	DepthTexture,
+};
 
 pub struct Renderer {
 	/// winit window needs to be an Arc because both this, the application, and the surface constructor (async) needs it
@@ -22,7 +25,7 @@ pub struct Renderer {
 	/// Surface config if i had to guess
 	config: wgpu::SurfaceConfiguration,
 	/// Connection to GPU
-	device: wgpu::Device,
+	pub(crate) device: wgpu::Device,
 	/// Device command queue
 	queue: wgpu::Queue,
 	/// Render pipeline (only one for now)
@@ -30,16 +33,17 @@ pub struct Renderer {
 	/// Bind group that is set once for all meshes
 	global_bind_group: wgpu::BindGroup,
 	/// Layout of per-mesh bind group
-	mesh_bind_group_layout: wgpu::BindGroupLayout,
+	pub(crate) mesh_bind_group_layout: wgpu::BindGroupLayout,
 	/// Depth buffer texture (z buffer)
 	depth_texture: DepthTexture,
 	/// Texture atlas for all block textures
-	block_texture_atlas: TextureAtlas,
+	pub(crate) block_texture_atlas: TextureAtlas,
 	/// Camera duh
 	pub camera: Camera,
 	/// Buffer for camera data to go in
 	camera_buffer: wgpu::Buffer,
 }
+
 impl Renderer {
 	pub fn new(window: Arc<Window>) -> Result<Renderer, ()> {
 		let size = window.inner_size();
@@ -84,7 +88,7 @@ impl Renderer {
 				.unwrap();
 			(adapter, device, queue)
 		}
-			.block_on();
+		.block_on();
 
 		let surface_capabilities = surface.get_capabilities(&adapter);
 
@@ -213,7 +217,7 @@ impl Renderer {
 					return Err(());
 				}
 			}
-				.to_rgba8();
+			.to_rgba8();
 			ablock_textures.push((TextureAtlasKey::Block(block_type.id), img));
 
 			if block_type.id == NULL_BLOCK_ID {
@@ -323,8 +327,11 @@ impl Renderer {
 		self.surface.configure(&self.device, &self.config);
 	}
 
-	pub fn render(&mut self, game: &Option<Game>) -> Result<(), wgpu::SurfaceError> {
-		// updating uniforms
+	pub fn render(&mut self, game: &mut Option<Game>) -> Result<(), wgpu::SurfaceError> {
+		// updating camera uniform
+		if let Some(game) = game {
+			self.camera.player_pov(&game.player);
+		}
 		self.queue.write_buffer(
 			&self.camera_buffer,
 			0,
@@ -375,15 +382,19 @@ impl Renderer {
 			render_pass.set_bind_group(1, &self.block_texture_atlas.texture.bind_group, &[]);
 
 			// drawing chunks
-			for (_pos, chunk) in game.chunks.iter() {
-				for mesh in chunk.meshes.iter() {
+			for (_pos, chunk) in game.chunks.iter_mut() {
+				for mesh in chunk.meshes.iter_mut() {
+					let mesh_render_objs = mesh.get_render_objs(&self);
+
 					// setting per-mesh bind group
-					render_pass.set_bind_group(2, &mesh.bind_group, &[]);
+					render_pass.set_bind_group(2, &mesh_render_objs.bind_group, &[]);
 
 					// setting verts and tris
-					render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-					render_pass
-						.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+					render_pass.set_vertex_buffer(0, mesh_render_objs.vertex_buffer.slice(..));
+					render_pass.set_index_buffer(
+						mesh_render_objs.index_buffer.slice(..),
+						wgpu::IndexFormat::Uint32,
+					);
 
 					// draw
 					render_pass.draw_indexed(0..(mesh.n_tris * 3), 0, 0..1);

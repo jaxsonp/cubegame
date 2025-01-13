@@ -1,8 +1,6 @@
 mod framerate;
 
-use std::{
-	sync::Arc,
-};
+use std::sync::Arc;
 use winit::{
 	application::ApplicationHandler,
 	event::WindowEvent,
@@ -27,6 +25,13 @@ impl Application {
 	pub fn new(window: Window) -> Result<Application, ()> {
 		let window = Arc::new(window);
 
+		let renderer = match Renderer::new(window.clone()) {
+			Ok(renderer) => renderer,
+			Err(()) => {
+				return Err(());
+			}
+		};
+
 		let mut framerate_manager = FramerateManager::new();
 		framerate_manager.set_max_fps(60);
 
@@ -40,17 +45,9 @@ impl Application {
 			.unwrap();
 		let game = Some(Game::new(game_server_uri)?);
 
-		// initializing renderer
-		let renderer = match Renderer::new(window.clone()) {
-			Ok(renderer) => renderer,
-			Err(()) => {
-				return Err(());
-			}
-		};
-
 		Ok(Self {
-			window,
 			renderer,
+			window,
 			framerate_manager,
 			game,
 		})
@@ -61,7 +58,6 @@ impl Application {
 			.set_title(format!("Cubegame ({} fps)", self.framerate_manager.current_fps).as_str());
 		if let Some(world) = &mut self.game {
 			world.update(dt);
-			self.renderer.camera.player_pov(&world.player);
 		}
 	}
 }
@@ -74,7 +70,7 @@ impl ApplicationHandler for Application {
 		window_id: WindowId,
 		event: WindowEvent,
 	) {
-		if window_id != self.renderer.window.id() {
+		if window_id != self.window.id() {
 			return;
 		}
 
@@ -91,9 +87,11 @@ impl ApplicationHandler for Application {
 
 				// remeshing world chunks if necessary
 				if let Some(game) = &mut self.game {
-					game.check_remesh(&self.renderer);
+					game.check_remesh();
 				}
-				match self.renderer.render(&self.game) {
+
+				let res = self.renderer.render(&mut self.game);
+				match res {
 					Ok(_) => {}
 					Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
 						// Reconfigure the surface if it's lost or outdated

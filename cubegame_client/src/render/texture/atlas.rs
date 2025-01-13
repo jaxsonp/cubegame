@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use super::LoadedTexture;
 use crunch::*;
+use cubegame_lib::blocks::NULL_BLOCK_ID;
 use cubegame_lib::BlockTypeID;
 use image::{imageops, RgbaImage};
 use wgpu::BindGroupLayoutDescriptor;
@@ -61,6 +62,17 @@ impl TextureAtlas {
 					item.rect.h as f32 / atlas.height() as f32,
 				],
 			);
+			if item.data == TextureAtlasKey::Block(NULL_BLOCK_ID) {
+				rect_map.insert(
+					TextureAtlasKey::Null,
+					[
+						item.rect.x as f32 / atlas.width() as f32,
+						item.rect.y as f32 / atlas.height() as f32,
+						item.rect.w as f32 / atlas.width() as f32,
+						item.rect.h as f32 / atlas.height() as f32,
+					],
+				);
+			}
 		}
 
 		// loading
@@ -107,4 +119,5 @@ impl TextureAtlas {
 #[derive(Clone, Copy, Hash, Eq, PartialEq, Debug)]
 pub enum TextureAtlasKey {
 	Block(BlockTypeID),
+	Null,
 }

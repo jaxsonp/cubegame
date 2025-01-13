@@ -614,11 +614,10 @@ dependencies = [
  "fs_extra",
  "http",
  "image",
+ "lazy_static",
  "log",
  "nalgebra",
  "pollster",
- "rmp-serde",
- "serde",
  "spin_sleep",
  "tungstenite",
  "wgpu",
@@ -631,10 +630,8 @@ version = "0.1.0"
 dependencies = [
  "bitmask-enum",
  "lazy_static",
- "log",
  "rmp-serde",
  "serde",
- "tungstenite",
 ]
 
 [[package]]
@@ -643,8 +640,6 @@ version = "0.1.0"
 dependencies = [
  "cubegame-lib",
  "log",
- "rmp-serde",
- "serde",
  "tungstenite",
 ]
 

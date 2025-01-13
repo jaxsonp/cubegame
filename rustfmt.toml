@@ -4,5 +4,6 @@ hard_tabs = true
 reorder_imports = true
 reorder_modules = true
 
+# nightly :(
 #group_imports = "StdExternalCrate"
 #imports_layout = "Vertical"

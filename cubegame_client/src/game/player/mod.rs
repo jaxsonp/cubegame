@@ -10,26 +10,32 @@ use cubegame_lib::{ChunkPos, CHUNK_WIDTH};
 pub struct Player {
 	/// position
 	pub pos: Point3<f32>,
-	/// Yaw from negative Z (0 -> 2PI)
+	/// View yaw from negative Z (0 -> 2PI)
 	pub facing_yaw: f32,
-	/// pitch from horizon (-PI -> PI)
+	/// View pitch from horizon (-PI -> PI)
 	pub facing_pitch: f32,
 	/// Stores state on player input
 	controller: PlayerController,
 }
 impl Player {
-	// movement speeds, in units per second
-	const MOVE_SPEED_FORWARD: f32 = 7.0;
-	const MOVE_SPEED_BACKWARD: f32 = 6.0;
-	const MOVE_SPEED_LATERAL: f32 = 6.0;
-	const MOVE_SPEED_VERTICAL: f32 = 6.0;
-	// look rotation speed, in degrees per second
+	/// Movement speed forward, in units per second
+	const MOVE_SPEED_FORWARD: f32 = 9.0;
+	/// Movement speed backward, in units per second
+	const MOVE_SPEED_BACKWARD: f32 = 7.5;
+	/// Movement speed laterally (strafing), in units per second
+	const MOVE_SPEED_LATERAL: f32 = 8.0;
+	/// Movement speed vertically, in units per second
+	const MOVE_SPEED_VERTICAL: f32 = 8.0;
+
+	/// look rotation speed, in degrees per second
 	const LOOK_SPEED: f32 = 90.0;
+	/// Angle to clamp the player's facing pitch, in degrees
+	const PITCH_LIMIT: f32 = (PI / 2.0) - 0.01;
 
 	pub fn new() -> Self {
 		Self {
 			controller: PlayerController::new(),
-			pos: Point3::new(0.0, 0.0, 2.0),
+			pos: Point3::new(CHUNK_WIDTH as f32 / 2.0, 8.0, CHUNK_WIDTH as f32 / 2.0),
 			facing_yaw: 0.0,
 			facing_pitch: 0.0,
 		}
@@ -72,10 +78,14 @@ impl Player {
 		}
 		if self.controller.looking_up() {
 			self.facing_pitch += Self::LOOK_SPEED.to_radians() * dt;
-			self.facing_pitch = self.facing_pitch.clamp(-PI / 2.0, PI / 2.0);
+			self.facing_pitch = self
+				.facing_pitch
+				.clamp(-Player::PITCH_LIMIT, Player::PITCH_LIMIT);
 		} else if self.controller.looking_down() {
 			self.facing_pitch -= Self::LOOK_SPEED.to_radians() * dt;
-			self.facing_pitch = self.facing_pitch.clamp(-PI / 2.0, PI / 2.0);
+			self.facing_pitch = self
+				.facing_pitch
+				.clamp(-Player::PITCH_LIMIT, Player::PITCH_LIMIT);
 		}
 		if self.controller.looking_left() {
 			self.facing_yaw += Self::LOOK_SPEED.to_radians() * dt;
@@ -89,8 +99,8 @@ impl Player {
 	/// Gets the chunk that this player is in
 	pub fn chunk_pos(&self) -> ChunkPos {
 		ChunkPos {
-			x: (self.pos.x / (CHUNK_WIDTH as f32)) as i32,
-			z: (self.pos.z / (CHUNK_WIDTH as f32)) as i32,
+			x: (self.pos.x / (CHUNK_WIDTH as f32)).floor() as i32,
+			z: (self.pos.z / (CHUNK_WIDTH as f32)).floor() as i32,
 		}
 	}
 }

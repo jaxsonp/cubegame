@@ -43,7 +43,9 @@ impl Camera {
 		(OPENGL_TO_WGPU_MATRIX * proj_mat * view_mat).into()
 	}
 
+	/// Sets the camera to be the player's POV
 	pub fn player_pov(&mut self, player: &Player) {
+		// TODO maybe refactor this somewhere else?
 		self.eye = player.pos;
 		self.facing = player.facing_vec();
 		self.up = Vector3::new(0.0, 1.0, 0.0);

@@ -5,7 +5,7 @@ use std::{
 
 use cubegame_lib::{
 	communication::{Communication, ServerMessage, ServerResponse},
-	ChunkDeltaData,
+	BlockData, ChunkDeltaData, LocalBlockPos,
 };
 use tungstenite::{accept, Message};
 
@@ -63,7 +63,11 @@ pub fn run_server(port: u16) -> Result<(), ()> {
 fn make_response(msg: &ServerMessage) -> ServerResponse {
 	match msg {
 		ServerMessage::LoadChunk(chunk_pos) => {
-			ServerResponse::LoadChunkOK(ChunkDeltaData::empty(*chunk_pos))
+			let mut delta = ChunkDeltaData::empty(*chunk_pos);
+			delta
+				.blocks
+				.push((LocalBlockPos::new(2, 5, 2), BlockData::default()));
+			ServerResponse::LoadChunkOK(delta)
 		}
 		_ => {
 			log::warn!("Unhandled message, acknowledging: {:?}", msg);
