@@ -2,20 +2,17 @@ mod camera;
 pub mod mesh;
 mod texture;
 
-use std::{path::Path, sync::Arc};
+use std::sync::Arc;
 
-use cubegame_lib::blocks::{AIR_BLOCK_ID, BLOCK_TYPES, NULL_BLOCK_ID};
-use image::{ImageReader, RgbaImage};
 use pollster::FutureExt;
 use winit::window::Window;
 
 use crate::game::Game;
+use crate::render::texture::read_block_textures;
 use camera::Camera;
 use mesh::vert::Vert;
-use texture::{
-	atlas::{TextureAtlas, TextureAtlasKey},
-	DepthTexture,
-};
+use texture::atlas::TextureAtlas;
+use texture::depth_buffer::DepthTexture;
 
 pub struct Renderer {
 	/// winit window needs to be an Arc because both this, the application, and the surface constructor (async) needs it
@@ -189,43 +186,8 @@ impl Renderer {
 				],
 				label: Some("Texture bind group layout"),
 			});
-		let mut ablock_textures: Vec<(TextureAtlasKey, RgbaImage)> =
-			Vec::with_capacity(BLOCK_TYPES.len());
 
-		for block_type in BLOCK_TYPES.iter() {
-			if block_type.id == AIR_BLOCK_ID {
-				continue; // no need to load a texture for air
-			}
-
-			// atlas stuff
-			let path = Path::new("./assets/").join(block_type.texture_path);
-			let img = match ImageReader::open(&path) {
-				Ok(img_reader) => match img_reader.decode() {
-					Ok(img) => img,
-					Err(e) => {
-						log::error!("Failed to decode asset \"{}\": {}", path.display(), e);
-						return Err(());
-					}
-				},
-				Err(e) => {
-					log::error!(
-						"Failed to load block texture for \"{}\" from \"{}\": {}",
-						block_type.name,
-						path.display(),
-						e
-					);
-					return Err(());
-				}
-			}
-			.to_rgba8();
-			ablock_textures.push((TextureAtlasKey::Block(block_type.id), img));
-
-			if block_type.id == NULL_BLOCK_ID {
-				continue;
-			}
-		}
-
-		let block_texture_atlas = TextureAtlas::generate(ablock_textures, &device, &queue)?;
+		let block_texture_atlas = TextureAtlas::generate(read_block_textures()?, &device, &queue)?;
 		//
 
 		// setting up render pipeline

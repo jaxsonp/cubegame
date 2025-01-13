@@ -10,6 +10,3 @@ version = "0.1.0"
 authors = ["Jaxson Pahukula <jaxpahu@gmail.com>"]
 repository = "https://github.com/jaxsonp/cubegame"
 
-[profile.release]
-debug = true
-

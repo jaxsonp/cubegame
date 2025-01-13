@@ -37,6 +37,7 @@ impl Game {
 				return Err(());
 			}
 		};
+		log::info!("Connected to game server at {}", server_url);
 
 		Ok(Game {
 			player: Player::new(),

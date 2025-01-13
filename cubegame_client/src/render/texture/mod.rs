@@ -1,9 +1,14 @@
 pub mod atlas;
+pub mod depth_buffer;
 
-use image::RgbaImage;
+use crate::render::texture::atlas::TextureAtlasKey;
+use cubegame_lib::blocks::{BlockTextureLayout, BLOCK_TYPES};
+use cubegame_lib::Direction;
+use image::{ImageReader, RgbaImage};
+use std::path::Path;
 use wgpu::{
-	BindGroupDescriptor, BindGroupLayout, Device, Queue, Sampler, SurfaceConfiguration, Texture,
-	TextureDescriptor, TextureFormat, TextureView, TextureViewDescriptor,
+	BindGroupDescriptor, BindGroupLayout, Device, Queue, Sampler, Texture, TextureDescriptor,
+	TextureView,
 };
 
 /// Represents a loaded texture, ready for use with a render pass
@@ -97,36 +102,63 @@ impl LoadedTexture {
 	}
 }
 
-/// Struct to hold depth buffer, has same size as screen
-#[allow(dead_code)]
-pub struct DepthTexture {
-	pub texture: Texture,
-	pub texture_view: TextureView,
-}
-impl DepthTexture {
-	pub const FORMAT: TextureFormat = TextureFormat::Depth32Float;
+/// helper function that reads block textures for every block type from file
+///
+/// returns a vector of keys that belong to an image
+pub fn read_block_textures() -> Result<Vec<(Vec<TextureAtlasKey>, RgbaImage)>, ()> {
+	let mut out = Vec::new();
 
-	pub fn new(device: &Device, config: &SurfaceConfiguration) -> DepthTexture {
-		let texture_size = wgpu::Extent3d {
-			width: config.width.max(1),
-			height: config.height.max(1),
-			depth_or_array_layers: 1,
-		};
-		let texture = device.create_texture(&TextureDescriptor {
-			label: Some("Depth buffer texture"),
-			size: texture_size,
-			mip_level_count: 1,
-			sample_count: 1,
-			dimension: wgpu::TextureDimension::D2,
-			format: DepthTexture::FORMAT,
-			usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
-			view_formats: &[],
-		});
+	let read_img = |filename: &str| -> Result<RgbaImage, ()> {
+		let path = Path::new("./assets/block_textures").join(filename);
+		match ImageReader::open(&path) {
+			Ok(img_reader) => Ok(img_reader.decode().unwrap().to_rgba8()),
+			Err(e) => {
+				log::error!(
+					"Failed to read block texture from \"{}\": {}",
+					path.display(),
+					e
+				);
+				return Err(());
+			}
+		}
+	};
 
-		let texture_view = texture.create_view(&TextureViewDescriptor::default());
-		DepthTexture {
-			texture,
-			texture_view,
+	for block_type in BLOCK_TYPES.iter() {
+		match block_type.texture_layout {
+			BlockTextureLayout::Uniform(filename) => {
+				out.push((
+					vec![TextureAtlasKey::Block(block_type.id)],
+					read_img(filename)?,
+				));
+			}
+			BlockTextureLayout::TopSideBottom {
+				top: top_filename,
+				sides: side_filename,
+				bottom: bottom_filename,
+			} => {
+				// top
+				out.push((
+					vec![TextureAtlasKey::BlockFace(block_type.id, Direction::PosY)],
+					read_img(top_filename)?,
+				));
+				// sides
+				out.push((
+					vec![
+						TextureAtlasKey::BlockFace(block_type.id, Direction::PosX),
+						TextureAtlasKey::BlockFace(block_type.id, Direction::NegX),
+						TextureAtlasKey::BlockFace(block_type.id, Direction::PosZ),
+						TextureAtlasKey::BlockFace(block_type.id, Direction::NegZ),
+					],
+					read_img(side_filename)?,
+				));
+				// bottom
+				out.push((
+					vec![TextureAtlasKey::BlockFace(block_type.id, Direction::NegY)],
+					read_img(bottom_filename)?,
+				));
+			}
+			BlockTextureLayout::None => {}
 		}
 	}
+	return Ok(out);
 }

@@ -99,8 +99,8 @@ impl Player {
 	/// Gets the chunk that this player is in
 	pub fn chunk_pos(&self) -> ChunkPos {
 		ChunkPos {
-			x: (self.pos.x / (CHUNK_WIDTH as f32)).floor() as i32,
-			z: (self.pos.z / (CHUNK_WIDTH as f32)).floor() as i32,
+			x: 0, //(self.pos.x / (CHUNK_WIDTH as f32)).floor() as i32,
+			z: 0, //(self.pos.z / (CHUNK_WIDTH as f32)).floor() as i32,
 		}
 	}
 }

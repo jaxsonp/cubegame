@@ -31,6 +31,7 @@ impl Application {
 				return Err(());
 			}
 		};
+		log::debug!("Instantiated renderer");
 
 		let mut framerate_manager = FramerateManager::new();
 		framerate_manager.set_max_fps(60);

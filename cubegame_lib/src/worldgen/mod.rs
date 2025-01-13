@@ -15,6 +15,8 @@ pub fn generate_chunk(pos: ChunkPos) -> Box<ChunkData> {
 			chunk.blocks[i] = BlockData { type_id: 2 };
 		} else if pos.y() < 6 {
 			chunk.blocks[i] = BlockData { type_id: 3 };
+		} else if pos.y() == 6 {
+			chunk.blocks[i] = BlockData { type_id: 4 };
 		}
 	}
 

@@ -2,18 +2,23 @@ use std::collections::HashMap;
 
 use super::{Mesh, Vert};
 use crate::render::texture::atlas::TextureAtlasKey;
-use cubegame_lib::{blocks::AIR_BLOCK_ID, ChunkData, Direction, LocalBlockPos, CHUNK_WIDTH};
+use cubegame_lib::blocks::{BlockTextureLayout, BlockType};
+use cubegame_lib::{
+	blocks::AIR_BLOCK_ID, ChunkData, Direction, Directions, LocalBlockPos, CHUNK_WIDTH,
+};
 
 /// Turns a chunk into meshes
 ///
 /// Current implementation creates one conjoined mesh per texture
+/// TODO remove redundant rendering on the sides of the chunk
+/// TODO randomize texture orientation
 pub fn mesh_chunk(data: &ChunkData) -> Vec<Mesh> {
 	let chunk_pos = data.pos;
 	let mut total_verts = 0;
 	let mut total_tris = 0;
 
 	// a list of faces at each block pos for each texture
-	let mut meshes: HashMap<TextureAtlasKey, Vec<(LocalBlockPos, Direction)>> = HashMap::new();
+	let mut meshes: HashMap<TextureAtlasKey, Vec<(LocalBlockPos, Directions)>> = HashMap::new();
 
 	for (i, block) in data.blocks.iter().enumerate() {
 		if block.type_id == AIR_BLOCK_ID {
@@ -22,21 +27,63 @@ pub fn mesh_chunk(data: &ChunkData) -> Vec<Mesh> {
 		let local_pos = LocalBlockPos::from_index(i);
 
 		// optimization: choosing which faces to render
-		let mut faces: Direction = Direction::all_flags();
-		for (_, direction) in Direction::flags() {
-			// for each direction, check if there is a neighbor in this chunk, and check if that neighbor is air
-			if let Some(neighbor) = local_pos.get_neighbor(*direction) {
-				if data.blocks[neighbor.to_index()].type_id != AIR_BLOCK_ID {
-					faces &= direction.not();
-				}
+		let mut faces = Directions::all_flags();
+		// for each direction, check if there is a neighbor in this chunk, and check if that neighbor is air
+		if let Some(neighbor) = local_pos.get_neighbor(Direction::PosX) {
+			if data.blocks[neighbor.to_index()].type_id != AIR_BLOCK_ID {
+				faces ^= Directions::PosX;
+			}
+		}
+		if let Some(neighbor) = local_pos.get_neighbor(Direction::NegX) {
+			if data.blocks[neighbor.to_index()].type_id != AIR_BLOCK_ID {
+				faces ^= Directions::NegX;
+			}
+		}
+		if let Some(neighbor) = local_pos.get_neighbor(Direction::PosY) {
+			if data.blocks[neighbor.to_index()].type_id != AIR_BLOCK_ID {
+				faces ^= Directions::PosY;
+			}
+		}
+		if let Some(neighbor) = local_pos.get_neighbor(Direction::NegY) {
+			if data.blocks[neighbor.to_index()].type_id != AIR_BLOCK_ID {
+				faces ^= Directions::NegY;
+			}
+		}
+		if let Some(neighbor) = local_pos.get_neighbor(Direction::PosZ) {
+			if data.blocks[neighbor.to_index()].type_id != AIR_BLOCK_ID {
+				faces ^= Directions::PosZ;
+			}
+		}
+		if let Some(neighbor) = local_pos.get_neighbor(Direction::NegZ) {
+			if data.blocks[neighbor.to_index()].type_id != AIR_BLOCK_ID {
+				faces ^= Directions::NegZ;
 			}
 		}
 
-		let tex_key = TextureAtlasKey::Block(block.type_id);
-		if meshes.contains_key(&tex_key) {
-			meshes.get_mut(&tex_key).unwrap().push((local_pos, faces));
-		} else {
-			meshes.insert(tex_key, vec![(local_pos, faces)]);
+		let block_type = BlockType::from_id(block.type_id);
+		let mut insert_faces = |tex_key, faces| {
+			if meshes.contains_key(&tex_key) {
+				meshes.get_mut(&tex_key).unwrap().push((local_pos, faces));
+			} else {
+				meshes.insert(tex_key, vec![(local_pos, faces)]);
+			}
+		};
+		match block_type.texture_layout {
+			// dont care about orientation when its a uniform block
+			BlockTextureLayout::Uniform(_) => {
+				insert_faces(TextureAtlasKey::Block(block.type_id), faces);
+			}
+			// if its not uniform, face matters
+			_ => {
+				for (_, face) in Directions::flags() {
+					if faces.contains(*face) {
+						insert_faces(
+							TextureAtlasKey::BlockFace(block.type_id, (*face).into()),
+							*face,
+						);
+					}
+				}
+			}
 		}
 	}
 
@@ -72,7 +119,7 @@ pub fn mesh_chunk(data: &ChunkData) -> Vec<Mesh> {
 					verts.extend_from_slice(&new_verts);
 				};
 
-				if faces.contains(Direction::PosX) {
+				if faces.contains(Directions::PosX) {
 					// right face
 
 					add_face([
@@ -94,7 +141,7 @@ pub fn mesh_chunk(data: &ChunkData) -> Vec<Mesh> {
 						},
 					]);
 				}
-				if faces.contains(Direction::NegX) {
+				if faces.contains(Directions::NegX) {
 					add_face([
 						Vert {
 							pos: [0.0, 0.0, 0.0],
@@ -114,7 +161,7 @@ pub fn mesh_chunk(data: &ChunkData) -> Vec<Mesh> {
 						},
 					]);
 				}
-				if faces.contains(Direction::PosY) {
+				if faces.contains(Directions::PosY) {
 					add_face([
 						Vert {
 							pos: [0.0, 1.0, 1.0],
@@ -134,7 +181,7 @@ pub fn mesh_chunk(data: &ChunkData) -> Vec<Mesh> {
 						},
 					]);
 				}
-				if faces.contains(Direction::NegY) {
+				if faces.contains(Directions::NegY) {
 					add_face([
 						Vert {
 							pos: [0.0, 0.0, 0.0],
@@ -154,7 +201,7 @@ pub fn mesh_chunk(data: &ChunkData) -> Vec<Mesh> {
 						},
 					]);
 				}
-				if faces.contains(Direction::PosZ) {
+				if faces.contains(Directions::PosZ) {
 					add_face([
 						Vert {
 							pos: [0.0, 0.0, 1.0],
@@ -174,7 +221,7 @@ pub fn mesh_chunk(data: &ChunkData) -> Vec<Mesh> {
 						},
 					]);
 				}
-				if faces.contains(Direction::NegZ) {
+				if faces.contains(Directions::NegZ) {
 					add_face([
 						Vert {
 							pos: [1.0, 0.0, 0.0],

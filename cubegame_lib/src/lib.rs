@@ -1,11 +1,11 @@
 pub mod blocks;
-pub mod worldgen;
 pub mod communication;
+pub mod worldgen;
 
-use std::fmt::Formatter;
+use crate::blocks::AIR_BLOCK_ID;
 use bitmask_enum::bitmask;
 use serde::{Deserialize, Serialize};
-use crate::blocks::AIR_BLOCK_ID;
+use std::fmt::Formatter;
 
 // constants
 pub const WORLD_HEIGHT: usize = 256;
@@ -13,10 +13,22 @@ pub const CHUNK_WIDTH: usize = 16;
 pub const BLOCKS_PER_CHUNK: usize = CHUNK_WIDTH * CHUNK_WIDTH * WORLD_HEIGHT;
 
 // types
-pub type BlockTypeID = u8;
+pub type BlockTypeId = u8;
 
+/// Represents possibly multiple directions (or none)
 #[bitmask(u8)]
 #[bitmask_config(flags_iter)]
+pub enum Directions {
+	PosX,
+	NegX,
+	PosY,
+	NegY,
+	PosZ,
+	NegZ,
+}
+
+/// Represents a single direction
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Direction {
 	PosX,
 	NegX,
@@ -24,6 +36,24 @@ pub enum Direction {
 	NegY,
 	PosZ,
 	NegZ,
+}
+impl From<Directions> for Direction {
+	/// WARNING: assumes there is one and only one direction set
+	fn from(value: Directions) -> Self {
+		if value.intersects(Directions::PosX) {
+			Direction::PosX
+		} else if value.intersects(Directions::NegX) {
+			Direction::NegX
+		} else if value.intersects(Directions::PosY) {
+			Direction::PosY
+		} else if value.intersects(Directions::NegY) {
+			Direction::NegY
+		} else if value.intersects(Directions::PosZ) {
+			Direction::PosZ
+		} else {
+			Direction::NegZ
+		}
+	}
 }
 
 /// Chunk indexing position (x and z coordinates)
@@ -106,7 +136,6 @@ impl LocalBlockPos {
 					return Some(LocalBlockPos::new(self.x(), self.y(), self.z() - 1));
 				}
 			}
-			_ => {}
 		}
 		None
 	}
@@ -148,7 +177,7 @@ impl ChunkDeltaData {
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct BlockData {
 	/// Block type ID
-	pub type_id: BlockTypeID,
+	pub type_id: BlockTypeId,
 }
 impl Default for BlockData {
 	fn default() -> Self {
