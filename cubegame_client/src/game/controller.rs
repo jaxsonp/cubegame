@@ -48,14 +48,10 @@ impl PlayerController {
 					PhysicalKey::Code(ArrowRight) => self.input_looking_right = pressed,
 					PhysicalKey::Code(ArrowUp) => self.input_looking_up = pressed,
 					PhysicalKey::Code(ArrowDown) => self.input_looking_down = pressed,
-					_ => {
-						return;
-					}
+					_ => {}
 				}
 			}
-			_ => {
-				return;
-			}
+			_ => {}
 		}
 	}
 

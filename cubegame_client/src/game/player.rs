@@ -1,21 +1,18 @@
-pub mod controller;
-
 use std::f32::consts::PI;
 
-use nalgebra::{Point3, Rotation3, Vector3};
+use nalgebra::{Matrix4, Point3, Rotation3, Vector3};
 
-use controller::PlayerController;
+use crate::game::controller::PlayerController;
 use cubegame_lib::{ChunkPos, CHUNK_WIDTH};
 
+#[derive(Debug, Copy, Clone)]
 pub struct Player {
 	/// position
-	pub pos: Point3<f32>,
+	pub pos: [f32; 3],
 	/// View yaw from negative Z (0 -> 2PI)
 	pub facing_yaw: f32,
 	/// View pitch from horizon (-PI -> PI)
 	pub facing_pitch: f32,
-	/// Stores state on player input
-	controller: PlayerController,
 }
 impl Player {
 	/// Movement speed forward, in units per second
@@ -34,16 +31,10 @@ impl Player {
 
 	pub fn new() -> Self {
 		Self {
-			controller: PlayerController::new(),
-			pos: Point3::new(CHUNK_WIDTH as f32 / 2.0, 40.0, CHUNK_WIDTH as f32 / 2.0),
+			pos: [CHUNK_WIDTH as f32 / 2.0, 40.0, CHUNK_WIDTH as f32 / 2.0],
 			facing_yaw: 0.0,
 			facing_pitch: 0.0,
 		}
-	}
-
-	pub fn handle_input(&mut self, event: &winit::event::WindowEvent) {
-		// TODO make movement be handled server side
-		self.controller.handle_input(event);
 	}
 
 	/// Unit vector representing direction player is facing
@@ -53,7 +44,7 @@ impl Player {
 		yaw_rot * (pitch_rot * -Vector3::z()).normalize()
 	}
 
-	pub fn update(&mut self, dt: f32) {
+	pub fn update(&mut self, dt: f32, controller: &PlayerController) {
 		let up = Vector3::<f32>::y();
 		let facing = self.facing_vec();
 
@@ -61,36 +52,49 @@ impl Player {
 		let left = || up.cross(&facing).normalize();
 		let forward = || left().cross(&up).normalize();
 
-		if self.controller.forward() {
-			self.pos += forward() * Self::MOVE_SPEED_FORWARD * dt;
-		} else if self.controller.backward() {
-			self.pos += -forward() * Self::MOVE_SPEED_BACKWARD * dt;
+		let mut movement = Vector3::<f32>::zeros();
+		let mut moved = false;
+		if controller.forward() {
+			movement += forward() * Self::MOVE_SPEED_FORWARD * dt;
+			moved = true;
+		} else if controller.backward() {
+			movement += -forward() * Self::MOVE_SPEED_BACKWARD * dt;
+			moved = true;
 		}
-		if self.controller.left() {
-			self.pos += left() * Self::MOVE_SPEED_LATERAL * dt;
-		} else if self.controller.right() {
-			self.pos += -left() * Self::MOVE_SPEED_LATERAL * dt;
+		if controller.left() {
+			movement += left() * Self::MOVE_SPEED_LATERAL * dt;
+			moved = true;
+		} else if controller.right() {
+			movement += -left() * Self::MOVE_SPEED_LATERAL * dt;
+			moved = true;
 		}
-		if self.controller.up() {
-			self.pos += up * Self::MOVE_SPEED_VERTICAL * dt;
-		} else if self.controller.down() {
-			self.pos += -up * Self::MOVE_SPEED_VERTICAL * dt;
+		if controller.up() {
+			movement += up * Self::MOVE_SPEED_VERTICAL * dt;
+			moved = true;
+		} else if controller.down() {
+			movement += -up * Self::MOVE_SPEED_VERTICAL * dt;
+			moved = true;
 		}
-		if self.controller.looking_up() {
+		if moved {
+			let new_pos = Vector3::from(self.pos) + movement;
+			self.pos = new_pos.as_slice().try_into().unwrap();
+		}
+
+		if controller.looking_up() {
 			self.facing_pitch += Self::LOOK_SPEED.to_radians() * dt;
 			self.facing_pitch = self
 				.facing_pitch
 				.clamp(-Player::PITCH_LIMIT, Player::PITCH_LIMIT);
-		} else if self.controller.looking_down() {
+		} else if controller.looking_down() {
 			self.facing_pitch -= Self::LOOK_SPEED.to_radians() * dt;
 			self.facing_pitch = self
 				.facing_pitch
 				.clamp(-Player::PITCH_LIMIT, Player::PITCH_LIMIT);
 		}
-		if self.controller.looking_left() {
+		if controller.looking_left() {
 			self.facing_yaw += Self::LOOK_SPEED.to_radians() * dt;
 			self.facing_yaw %= PI * 2.0;
-		} else if self.controller.looking_right() {
+		} else if controller.looking_right() {
 			self.facing_yaw -= Self::LOOK_SPEED.to_radians() * dt;
 			self.facing_yaw %= PI * 2.0;
 		}
@@ -99,8 +103,14 @@ impl Player {
 	/// Gets the chunk that this player is in
 	pub fn chunk_pos(&self) -> ChunkPos {
 		ChunkPos {
-			x: (self.pos.x / (CHUNK_WIDTH as f32)).floor() as i32,
-			z: (self.pos.z / (CHUNK_WIDTH as f32)).floor() as i32,
+			x: (self.pos[0] / (CHUNK_WIDTH as f32)).floor() as i32,
+			z: (self.pos[2] / (CHUNK_WIDTH as f32)).floor() as i32,
 		}
+	}
+
+	pub fn view_matrix(&self) -> Matrix4<f32> {
+		let pos: Vector3<f32> = self.pos.into();
+		let target: Point3<f32> = (pos + self.facing_vec()).into();
+		Matrix4::look_at_rh(&pos.into(), &target, &Vector3::y_axis())
 	}
 }

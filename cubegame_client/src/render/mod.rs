@@ -1,5 +1,6 @@
-mod camera;
 pub mod mesh;
+mod perspective;
+mod pipelines;
 mod texture;
 
 use std::sync::Arc;
@@ -8,10 +9,9 @@ use pollster::FutureExt;
 use winit::window::Window;
 
 use crate::game::Game;
-use crate::render::texture::read_block_textures;
-use camera::Camera;
-use mesh::vert::Vert;
-use texture::atlas::TextureAtlas;
+use perspective::Perspective;
+use perspective::OPENGL_TO_WGPU_MATRIX;
+use pipelines::{RenderPassInterface, WorldRenderingPipeline};
 use texture::depth_buffer::DepthTexture;
 
 pub struct Renderer {
@@ -20,23 +20,20 @@ pub struct Renderer {
 	/// Rendering surface
 	surface: wgpu::Surface<'static>,
 	/// Surface config if i had to guess
-	config: wgpu::SurfaceConfiguration,
+	surface_config: wgpu::SurfaceConfiguration,
 	/// Connection to GPU
-	pub(crate) device: wgpu::Device,
+	pub device: wgpu::Device,
 	/// Device command queue
 	queue: wgpu::Queue,
-	/// Render pipeline (only one for now)
-	render_pipeline: wgpu::RenderPipeline,
-	/// Bind group that is set once for all meshes
-	global_bind_group: wgpu::BindGroup,
+	// Rendering pipelines
+	/// World Rendering Pipeline, renders blocks and stuff
+	world_render_pipeline: WorldRenderingPipeline,
 	/// Layout of per-mesh bind group
-	pub(crate) mesh_bind_group_layout: wgpu::BindGroupLayout,
+	//pub mesh_bind_group_layout: wgpu::BindGroupLayout,
 	/// Depth buffer texture (z buffer)
-	depth_texture: DepthTexture,
-	/// Texture atlas for all block textures
-	pub(crate) block_texture_atlas: TextureAtlas,
-	/// Camera duh
-	pub camera: Camera,
+	depth_buffer: DepthTexture,
+	/// Perspective matrix data used for 3d rendering
+	pub perspective: Perspective,
 	/// Buffer for camera data to go in
 	camera_buffer: wgpu::Buffer,
 }
@@ -73,7 +70,7 @@ impl Renderer {
 			let (device, queue) = adapter
 				.request_device(
 					&wgpu::DeviceDescriptor {
-						required_features: wgpu::Features::empty(),
+						required_features: wgpu::Features::POLYGON_MODE_LINE,
 						required_limits: wgpu::Limits::default(),
 						label: None,
 						// performance over efficiency for memory management
@@ -114,142 +111,59 @@ impl Renderer {
 			usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
 			mapped_at_creation: false,
 		});
-		let global_bind_group_layout =
-			device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-				entries: &[wgpu::BindGroupLayoutEntry {
-					binding: 0,
-					visibility: wgpu::ShaderStages::VERTEX,
-					ty: wgpu::BindingType::Buffer {
-						ty: wgpu::BufferBindingType::Uniform,
-						has_dynamic_offset: false,
-						min_binding_size: None,
-					},
-					count: None,
-				}],
-				label: Some("Global bind group layout"),
-			});
-		let global_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-			layout: &global_bind_group_layout,
-			entries: &[wgpu::BindGroupEntry {
-				binding: 0,
-				resource: camera_buffer.as_entire_binding(),
-			}],
-			label: Some("Global bind group"),
-		});
-		let mesh_bind_group_layout =
-			device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-				entries: &[
-					wgpu::BindGroupLayoutEntry {
+		/*let camera_bind_group_layout =
+					device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+						entries: &[wgpu::BindGroupLayoutEntry {
+							binding: 0,
+							visibility: wgpu::ShaderStages::VERTEX,
+							ty: wgpu::BindingType::Buffer {
+								ty: wgpu::BufferBindingType::Uniform,
+								has_dynamic_offset: false,
+								min_binding_size: None,
+							},
+							count: None,
+						}],
+						label: Some("Global bind group layout"),
+					});
+				let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+					layout: &camera_bind_group_layout,
+					entries: &[wgpu::BindGroupEntry {
 						binding: 0,
-						visibility: wgpu::ShaderStages::VERTEX,
-						ty: wgpu::BindingType::Buffer {
-							ty: wgpu::BufferBindingType::Uniform,
-							has_dynamic_offset: false,
-							min_binding_size: None,
-						},
-						count: None,
-					},
-					wgpu::BindGroupLayoutEntry {
-						binding: 1,
-						visibility: wgpu::ShaderStages::FRAGMENT,
-						ty: wgpu::BindingType::Buffer {
-							ty: wgpu::BufferBindingType::Uniform,
-							has_dynamic_offset: false,
-							min_binding_size: None,
-						},
-						count: None,
-					},
-				],
-				label: Some("Local bind group layout"),
-			});
+						resource: camera_buffer.as_entire_binding(),
+					}],
+					label: Some("Global bind group"),
+				});
+		*/
+		let world_render_pipeline = WorldRenderingPipeline::new(
+			&device,
+			&queue,
+			&config,
+			camera_buffer.as_entire_binding(),
+		)?;
 
 		// loading block textures
-		let texture_bind_group_layout =
-			device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-				entries: &[
-					wgpu::BindGroupLayoutEntry {
-						binding: 0,
-						visibility: wgpu::ShaderStages::FRAGMENT,
-						ty: wgpu::BindingType::Texture {
-							multisampled: false,
-							view_dimension: wgpu::TextureViewDimension::D2,
-							sample_type: wgpu::TextureSampleType::Float { filterable: false },
-						},
-						count: None,
+		/*let texture_bind_group_layout =
+		device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+			entries: &[
+				wgpu::BindGroupLayoutEntry {
+					binding: 0,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Texture {
+						multisampled: false,
+						view_dimension: wgpu::TextureViewDimension::D2,
+						sample_type: wgpu::TextureSampleType::Float { filterable: false },
 					},
-					wgpu::BindGroupLayoutEntry {
-						binding: 1,
-						visibility: wgpu::ShaderStages::FRAGMENT,
-						ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
-						count: None,
-					},
-				],
-				label: Some("Texture bind group layout"),
-			});
-
-		let block_texture_atlas = TextureAtlas::generate(read_block_textures()?, &device, &queue)?;
-
-		// setting up render pipeline
-		let vert_shader = device.create_shader_module(wgpu::include_wgsl!("shader_vert.wgsl"));
-		let frag_shader = device.create_shader_module(wgpu::include_wgsl!("shader_frag.wgsl"));
-		let render_pipeline_layout =
-			device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-				label: Some("Render Pipeline Layout"),
-				bind_group_layouts: &[
-					&global_bind_group_layout,
-					&texture_bind_group_layout,
-					&mesh_bind_group_layout,
-				],
-				push_constant_ranges: &[],
-			});
-		let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-			label: Some("Render Pipeline"),
-			layout: Some(&render_pipeline_layout),
-			vertex: wgpu::VertexState {
-				module: &vert_shader,
-				entry_point: "main",
-				buffers: &[
-					Vert::buffer_layout(), // vert buffer
-				],
-				compilation_options: wgpu::PipelineCompilationOptions::default(),
-			},
-			fragment: Some(wgpu::FragmentState {
-				module: &frag_shader,
-				entry_point: "main",
-				targets: &[Some(wgpu::ColorTargetState {
-					format: config.format,
-					blend: Some(wgpu::BlendState::REPLACE),
-					write_mask: wgpu::ColorWrites::ALL,
-				})],
-				compilation_options: wgpu::PipelineCompilationOptions::default(),
-			}),
-			primitive: wgpu::PrimitiveState {
-				topology: wgpu::PrimitiveTopology::TriangleList,
-				strip_index_format: None,
-				front_face: wgpu::FrontFace::Ccw, // front face is counter-clockwise
-				cull_mode: Some(wgpu::Face::Back), // back cull
-				polygon_mode: wgpu::PolygonMode::Fill,
-				// Requires Features::DEPTH_CLIP_CONTROL
-				unclipped_depth: false,
-				// Requires Features::CONSERVATIVE_RASTERIZATION
-				conservative: false,
-			},
-			depth_stencil: Some(wgpu::DepthStencilState {
-				format: DepthTexture::FORMAT,
-				depth_write_enabled: true,
-				depth_compare: wgpu::CompareFunction::Less,
-				stencil: wgpu::StencilState::default(),
-				bias: wgpu::DepthBiasState::default(),
-			}),
-			multisample: wgpu::MultisampleState {
-				// idek what this stuff does
-				count: 1,
-				mask: !0,
-				alpha_to_coverage_enabled: false,
-			},
-			multiview: None,
-			cache: None,
-		});
+					count: None,
+				},
+				wgpu::BindGroupLayoutEntry {
+					binding: 1,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+					count: None,
+				},
+			],
+			label: Some("Texture bind group layout"),
+		});*/
 
 		let depth_texture = DepthTexture::new(&device, &config);
 
@@ -257,48 +171,41 @@ impl Renderer {
 			surface,
 			device,
 			queue,
-			config,
+			surface_config: config,
 			window,
-			render_pipeline,
-			global_bind_group,
-			mesh_bind_group_layout,
-			depth_texture,
-			block_texture_atlas,
-			camera: Camera::new(size.width as f32 / size.height as f32, 70.0, 0.1, 1000.0),
+			world_render_pipeline,
+			depth_buffer: depth_texture,
+			perspective: Perspective::new(
+				size.width as f32 / size.height as f32,
+				70.0,
+				0.1,
+				1000.0,
+			),
 			camera_buffer,
 		})
 	}
 
 	pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
 		if new_size.width > 0 && new_size.height > 0 {
-			self.config.width = new_size.width;
-			self.config.height = new_size.height;
+			self.surface_config.width = new_size.width;
+			self.surface_config.height = new_size.height;
 
 			// updating camera aspect ratio
-			self.camera.aspect = new_size.width as f32 / new_size.height as f32;
+			self.perspective.aspect = new_size.width as f32 / new_size.height as f32;
 
 			// resizing depth texture
-			self.depth_texture = DepthTexture::new(&self.device, &self.config);
+			self.depth_buffer = DepthTexture::new(&self.device, &self.surface_config);
 
-			self.reconfigure()
+			self.reconfigure_surface()
 		}
 	}
 
-	pub fn reconfigure(&mut self) {
-		self.surface.configure(&self.device, &self.config);
+	pub fn reconfigure_surface(&mut self) {
+		self.surface.configure(&self.device, &self.surface_config);
 	}
 
-	pub fn render(&mut self, game: &mut Option<Game>) -> Result<(), wgpu::SurfaceError> {
-		// updating camera uniform
-		if let Some(game) = game {
-			self.camera.player_pov(&game.player);
-		}
-		self.queue.write_buffer(
-			&self.camera_buffer,
-			0,
-			bytemuck::cast_slice(&self.camera.view_proj_matrix()),
-		);
-
+	/// Render the in game scene
+	pub fn render_game(&mut self, game: &Game) -> Result<(), wgpu::SurfaceError> {
 		let output = self.surface.get_current_texture()?;
 		let view = output
 			.texture
@@ -311,66 +218,36 @@ impl Renderer {
 				label: Some("Render Encoder"),
 			});
 
-		if let Some(game) = game {
-			// creating render pass
-			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-				label: Some("Render Pass"),
-				color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-					view: &view,
-					resolve_target: None,
-					ops: wgpu::Operations {
-						load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
-						store: wgpu::StoreOp::Store,
-					},
-				})],
-				depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-					view: &self.depth_texture.texture_view,
-					depth_ops: Some(wgpu::Operations {
-						load: wgpu::LoadOp::Clear(1.0),
-						store: wgpu::StoreOp::Store,
-					}),
-					stencil_ops: None,
-				}),
-				occlusion_query_set: None,
-				timestamp_writes: None,
-			});
-			render_pass.set_pipeline(&self.render_pipeline);
+		// updating camera buffer
+		let player_view_mat = game.world_data.player.view_matrix();
 
-			// global bind group
-			render_pass.set_bind_group(0, &self.global_bind_group, &[]);
+		let view_proj_matrix: [[f32; 4]; 4] =
+			(OPENGL_TO_WGPU_MATRIX * self.perspective.proj_matrix() * player_view_mat).into();
+		self.queue.write_buffer(
+			&self.camera_buffer,
+			0,
+			bytemuck::cast_slice(&view_proj_matrix),
+		);
 
-			// block texture atlas
-			render_pass.set_bind_group(1, &self.block_texture_atlas.texture.bind_group, &[]);
-
-			// drawing chunks
-			for (_pos, chunk) in game.chunks.iter_mut() {
-				for mesh in chunk.meshes.iter_mut() {
-					let mesh_render_objs = mesh.get_render_objs(&self);
-
-					// setting per-mesh bind group
-					render_pass.set_bind_group(2, &mesh_render_objs.bind_group, &[]);
-
-					// setting verts and tris
-					render_pass.set_vertex_buffer(0, mesh_render_objs.vertex_buffer.slice(..));
-					render_pass.set_index_buffer(
-						mesh_render_objs.index_buffer.slice(..),
-						wgpu::IndexFormat::Uint32,
-					);
-
-					// draw
-					render_pass.draw_indexed(0..(mesh.n_tris * 3), 0, 0..1);
-				}
-			}
-
-			// need to drop render pass before doing anything else w the encoder
+		if self
+			.world_render_pipeline
+			.execute_render_pass(
+				&mut encoder,
+				&view,
+				&self.depth_buffer.texture_view,
+				&game.world_data,
+			)
+			.is_err()
+		{
+			log::error!("Failed to execute world render pass");
 		}
+
+		self.queue.submit(std::iter::once(encoder.finish()));
 
 		// winit docs says to do this
 		self.window.pre_present_notify();
 
-		self.queue.submit(std::iter::once(encoder.finish()));
 		output.present();
-
 		Ok(())
 	}
 }

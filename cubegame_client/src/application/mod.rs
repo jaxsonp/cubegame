@@ -12,134 +12,17 @@ use crate::{game::Game, render::Renderer, INTEGRATED_SERVER_PORT};
 use framerate::FramerateManager;
 
 /// Application handler struct
-pub struct Application {
-	renderer: Renderer,
-	/// Application window (needs to be arced because the renderer and the render surface
-	/// constructor (which is async) needs it
-	window: Arc<Window>,
-	pub framerate_manager: FramerateManager,
-	pub game: Option<Game>,
-}
-impl Application {
-	/// Application constructor
-	pub fn new(window: Window) -> Result<Application, ()> {
-		let window = Arc::new(window);
-
-		let renderer = match Renderer::new(window.clone()) {
-			Ok(renderer) => renderer,
-			Err(()) => {
-				return Err(());
-			}
-		};
-		log::debug!("Instantiated renderer");
-
-		let mut framerate_manager = FramerateManager::new();
-		framerate_manager.set_max_fps(60);
-
-		// TODO support connecting to external servers
-		// connecting to game server
-		let game_server_uri = http::Uri::builder()
-			.scheme("ws")
-			.authority(format!("localhost:{}", INTEGRATED_SERVER_PORT))
-			.path_and_query("/")
-			.build()
-			.unwrap();
-		let game = Some(Game::new(game_server_uri)?);
-
-		Ok(Self {
-			renderer,
-			window,
-			framerate_manager,
-			game,
-		})
-	}
-
-	pub fn update(&mut self, dt: f32) {
-		self.window
-			.set_title(format!("Cubegame ({} fps)", self.framerate_manager.current_fps).as_str());
-		if let Some(world) = &mut self.game {
-			world.update(dt);
-		}
-	}
-}
-impl ApplicationHandler for Application {
-	fn resumed(&mut self, _: &ActiveEventLoop) {}
-
-	fn window_event(
-		&mut self,
-		event_loop: &ActiveEventLoop,
-		window_id: WindowId,
-		event: WindowEvent,
-	) {
-		if window_id != self.window.id() {
-			return;
-		}
-
-		if let Some(world) = &mut self.game {
-			world.player.handle_input(&event);
-		}
-
-		match event {
-			WindowEvent::RedrawRequested => {
-				let dt = self.framerate_manager.tick();
-				self.update(dt);
-
-				self.window.request_redraw();
-
-				// remeshing world chunks if necessary
-				if let Some(game) = &mut self.game {
-					game.check_remesh();
-				}
-
-				let res = self.renderer.render(&mut self.game);
-				match res {
-					Ok(_) => {}
-					Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
-						// Reconfigure the surface if it's lost or outdated
-						self.renderer.reconfigure()
-					}
-					Err(wgpu::SurfaceError::OutOfMemory) => {
-						log::error!("OutOfMemory");
-						event_loop.exit();
-					}
-					Err(wgpu::SurfaceError::Timeout) => {
-						log::warn!("Surface timeout")
-					}
-				}
-			}
-			WindowEvent::CloseRequested => event_loop.exit(),
-			WindowEvent::Resized(physical_size) => {
-				self.renderer.resize(physical_size);
-			}
-			_ => {}
-		}
-	}
-
-	fn suspended(&mut self, _: &ActiveEventLoop) {
-		log::debug!("Suspended");
-	}
-
-	// event loop is exiting
-	fn exiting(&mut self, _: &ActiveEventLoop) {
-		log::info!("Exiting");
-
-		if let Some(game) = &mut self.game {
-			game.shutdown();
-		}
-	}
-
-	// received a memory warning
-	fn memory_warning(&mut self, _: &ActiveEventLoop) {
-		log::warn!("Received memory warning");
-	}
-}
-
-/// Application handler struct, wraps initialization logic around the Application struct
 pub enum ApplicationState {
+	InGame {
+		renderer: Renderer,
+		/// Application window (needs to be arced because the renderer and the render surface
+		/// constructor (which is async) needs it
+		window: Arc<Window>,
+		framerate_manager: FramerateManager,
+		game: Game,
+	},
 	/// Uninitialized state, with the attributes to initialize the window with
 	Uninitialized(WindowAttributes),
-	/// Initialized state
-	Initialized(Application),
 }
 impl ApplicationState {
 	pub fn new(window_attributes: WindowAttributes) -> ApplicationState {
@@ -148,21 +31,39 @@ impl ApplicationState {
 
 	fn initialize(&mut self, event_loop: &ActiveEventLoop) -> Result<(), ()> {
 		if let ApplicationState::Uninitialized(window_attributes) = self {
-			// creating window
-			let window = event_loop
-				.create_window(window_attributes.clone())
-				.expect("Failed to create window");
-
 			// Creating application and all its state and stuff
-			match Application::new(window) {
-				Ok(app) => {
-					*self = ApplicationState::Initialized(app);
-				}
+			let window = Arc::new(
+				event_loop
+					.create_window(window_attributes.clone())
+					.expect("Failed to create window"),
+			);
+
+			let renderer = match Renderer::new(window.clone()) {
+				Ok(renderer) => renderer,
 				Err(()) => {
-					log::error!("Error while initializing application");
-					event_loop.exit();
 					return Err(());
 				}
+			};
+			log::debug!("Instantiated renderer");
+
+			let mut framerate_manager = FramerateManager::new();
+			framerate_manager.set_max_fps(60);
+
+			// TODO support connecting to external servers
+			// connecting to game server
+			let game_server_uri = http::Uri::builder()
+				.scheme("ws")
+				.authority(format!("localhost:{}", INTEGRATED_SERVER_PORT))
+				.path_and_query("/")
+				.build()
+				.unwrap();
+			let game = Game::new(game_server_uri)?;
+
+			*self = ApplicationState::InGame {
+				renderer,
+				window,
+				framerate_manager,
+				game,
 			};
 		} else {
 			log::warn!("Tried to double initialize application state");
@@ -180,7 +81,7 @@ impl ApplicationHandler for ApplicationState {
 					self.resumed(event_loop);
 				}
 			}
-			ApplicationState::Initialized(application) => application.resumed(event_loop),
+			_ => {}
 		}
 	}
 
@@ -190,31 +91,75 @@ impl ApplicationHandler for ApplicationState {
 		window_id: WindowId,
 		event: WindowEvent,
 	) {
-		if let ApplicationState::Initialized(application) = self {
-			application.window_event(event_loop, window_id, event);
+		match self {
+			ApplicationState::InGame {
+				renderer,
+				window,
+				framerate_manager,
+				game,
+			} => {
+				game.handle_input(&event);
+				match event {
+					WindowEvent::RedrawRequested => {
+						if window_id != window.id() {
+							return;
+						}
+
+						let dt = framerate_manager.tick();
+						game.update(dt);
+
+						window.set_title(
+							format!("Cubegame ({} fps)", framerate_manager.current_fps).as_str(),
+						);
+						window.request_redraw();
+
+						game.prep_meshes(renderer);
+						match renderer.render_game(game) {
+							Ok(_) => {}
+							Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+								// Reconfigure the surface if it's lost or outdated
+								renderer.reconfigure_surface()
+							}
+							Err(wgpu::SurfaceError::OutOfMemory) => {
+								log::error!("OutOfMemory");
+								event_loop.exit();
+							}
+							Err(wgpu::SurfaceError::Timeout) => {
+								log::warn!("Surface timeout")
+							}
+						}
+					}
+					WindowEvent::CloseRequested => event_loop.exit(),
+					WindowEvent::Resized(physical_size) => renderer.resize(physical_size),
+					_ => {}
+				}
+			}
+			ApplicationState::Uninitialized(_) => match event {
+				WindowEvent::CloseRequested => event_loop.exit(),
+				_ => {}
+			},
 		}
 	}
 
 	// When the app has been suspended
-	fn suspended(&mut self, event_loop: &ActiveEventLoop) {
-		if let ApplicationState::Initialized(application) = self {
-			application.suspended(event_loop);
-		} else {
-			log::warn!("Tried to suspended uninitialized application");
-		}
+	fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+		log::warn!("Application suspended");
 	}
 
 	// event loop is exiting
-	fn exiting(&mut self, event_loop: &ActiveEventLoop) {
-		if let ApplicationState::Initialized(application) = self {
-			application.exiting(event_loop);
+	fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+		log::info!("Exiting");
+
+		match self {
+			ApplicationState::InGame { game, .. } => {
+				game.shutdown();
+			}
+			_ => {}
 		}
 	}
 
 	// received a memory warning
-	fn memory_warning(&mut self, event_loop: &ActiveEventLoop) {
-		if let ApplicationState::Initialized(application) = self {
-			application.memory_warning(event_loop)
-		}
+	fn memory_warning(&mut self, _event_loop: &ActiveEventLoop) {
+		log::warn!("Received memory warning");
 	}
 }

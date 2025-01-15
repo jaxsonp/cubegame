@@ -62,17 +62,6 @@ pub struct ChunkPos {
 	pub x: i32,
 	pub z: i32,
 }
-impl ChunkPos {
-	/// Converts local block coordinates in this chunk to world coordinates
-	fn to_world_coords(&self, block_pos: LocalBlockPos) -> (i32, i32, i32) {
-		let chunk_w = CHUNK_WIDTH as i32;
-		(
-			(block_pos.x() as i32) + self.x * chunk_w,
-			block_pos.y() as i32,
-			(block_pos.z() as i32) + self.z * chunk_w,
-		)
-	}
-}
 impl std::fmt::Display for ChunkPos {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		f.write_fmt(format_args!("({}, {})", self.x, self.z))

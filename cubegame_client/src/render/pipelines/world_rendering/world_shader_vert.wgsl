@@ -9,7 +9,7 @@ var<uniform> camera: Camera;
 
 
 // per mesh bindings
-@group(2) @binding(0)
+@group(1) @binding(0)
 var<uniform> mesh_pos: vec3<f32>;
 
 

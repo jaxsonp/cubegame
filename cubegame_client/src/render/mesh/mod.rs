@@ -19,7 +19,7 @@ pub enum MeshRenderState {
 	},
 }
 
-/// Everything required to render a mesh
+/// Everything required to render a mesh, used by the world rendering pipeline
 pub struct MeshRenderObjects {
 	pub vertex_buffer: wgpu::Buffer,
 	pub index_buffer: wgpu::Buffer,
@@ -55,48 +55,49 @@ impl Mesh {
 		}
 	}
 	/// Gets this meshes render objects, eg its buffers and bind group
-	pub fn get_render_objs(&mut self, renderer: &Renderer) -> &MeshRenderObjects {
-		// loading buffers if needed
-		self.load_buffers(renderer);
-
+	pub fn get_render_objs(&self) -> Option<&MeshRenderObjects> {
 		if let MeshRenderState::Loaded(objs) = &self.render_state {
-			return objs;
+			Some(objs)
 		} else {
-			unreachable!();
+			None
 		}
 	}
 
 	/// Creates buffers and bind group for this mesh if it hasn't been loaded already
-	fn load_buffers(&mut self, renderer: &Renderer) {
+	pub fn load_buffers(&mut self, renderer: &Renderer) {
 		match &self.render_state {
 			MeshRenderState::Unloaded {
 				verts,
 				indices,
 				texture,
 			} => {
+				// position offset of this whole mesh
 				let pos_buffer = renderer.device.create_buffer_init(&BufferInitDescriptor {
 					label: Some("Mesh position buffer"),
 					contents: bytemuck::cast_slice(&self.pos),
 					usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
 				});
-				let rect = renderer
+				let atlas_pos_rect = renderer
+					.world_render_pipeline
 					.block_texture_atlas
 					.get_pos_of(*texture)
 					.unwrap_or_else(|| {
 						renderer
+							.world_render_pipeline
 							.block_texture_atlas
 							.get_pos_of(TextureAtlasKey::Null)
 							.unwrap()
 					});
+				// position of texture in the texture atlas
 				let atlas_pos_buffer = renderer.device.create_buffer_init(&BufferInitDescriptor {
 					label: Some("Mesh texture atlas position buffer"),
-					contents: bytemuck::cast_slice(rect),
+					contents: bytemuck::cast_slice(atlas_pos_rect),
 					usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
 				});
 				let bind_group = renderer
 					.device
 					.create_bind_group(&wgpu::BindGroupDescriptor {
-						layout: &renderer.mesh_bind_group_layout,
+						layout: &renderer.world_render_pipeline.local_bind_group_layout,
 						entries: &[
 							wgpu::BindGroupEntry {
 								binding: 0,

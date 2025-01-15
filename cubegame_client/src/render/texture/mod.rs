@@ -1,12 +1,7 @@
 pub mod atlas;
 pub mod depth_buffer;
 
-use crate::render::texture::atlas::TextureAtlasKey;
-use cubegame_lib::blocks::{BlockTextureLayout, BLOCK_TYPES};
-use cubegame_lib::Direction;
-use image::{ImageReader, RgbaImage};
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use image::RgbaImage;
 use wgpu::{
 	BindGroupDescriptor, BindGroupLayout, Device, Queue, Sampler, Texture, TextureDescriptor,
 	TextureView,
@@ -16,8 +11,8 @@ use wgpu::{
 #[allow(dead_code)]
 pub struct LoadedTexture {
 	texture: Texture,
-	texture_view: TextureView,
-	sampler: Sampler,
+	pub texture_view: TextureView,
+	pub sampler: Sampler,
 	pub bind_group: wgpu::BindGroup,
 }
 impl LoadedTexture {
@@ -101,75 +96,4 @@ impl LoadedTexture {
 			bind_group,
 		}
 	}
-}
-
-/// helper function that reads block textures for every block type from file
-///
-/// returns a vector of keys that belong to an image
-pub fn read_block_textures() -> Result<Vec<(Vec<TextureAtlasKey>, RgbaImage)>, ()> {
-	// hashmap of every image path and the keys that need it.
-	// This exists to remove redundant image loads, if there are multiple block types that reference the same file
-	let mut filepaths: HashMap<PathBuf, Vec<TextureAtlasKey>> = HashMap::new();
-
-	let mut record_filepath = |path: PathBuf, keys: Vec<TextureAtlasKey>| {
-		if filepaths.contains_key(&path) {
-			filepaths.get_mut(&path).unwrap().extend(keys);
-		} else {
-			filepaths.insert(path, keys);
-		}
-	};
-
-	for block_type in BLOCK_TYPES.iter() {
-		match block_type.texture_layout {
-			BlockTextureLayout::Uniform(filename) => {
-				record_filepath(
-					Path::new("./assets/block_textures").join(filename),
-					vec![TextureAtlasKey::Block(block_type.id)],
-				);
-			}
-			BlockTextureLayout::TopSideBottom {
-				top: top_filename,
-				sides: side_filename,
-				bottom: bottom_filename,
-			} => {
-				record_filepath(
-					Path::new("./assets/block_textures").join(top_filename),
-					vec![TextureAtlasKey::BlockFace(block_type.id, Direction::PosY)],
-				);
-				record_filepath(
-					Path::new("./assets/block_textures").join(side_filename),
-					vec![
-						TextureAtlasKey::BlockFace(block_type.id, Direction::PosX),
-						TextureAtlasKey::BlockFace(block_type.id, Direction::NegX),
-						TextureAtlasKey::BlockFace(block_type.id, Direction::PosZ),
-						TextureAtlasKey::BlockFace(block_type.id, Direction::NegZ),
-					],
-				);
-				record_filepath(
-					Path::new("./assets/block_textures").join(bottom_filename),
-					vec![TextureAtlasKey::BlockFace(block_type.id, Direction::NegY)],
-				);
-			}
-			BlockTextureLayout::None => {}
-		}
-	}
-
-	// reading the images
-	let mut out = Vec::new();
-	for (path, keys) in filepaths.into_iter() {
-		let img = match ImageReader::open(&path) {
-			Ok(img_reader) => img_reader.decode().unwrap().to_rgba8(),
-			Err(e) => {
-				log::error!(
-					"Failed to read block texture from \"{}\": {}",
-					path.display(),
-					e
-				);
-				return Err(());
-			}
-		};
-		out.push((keys, img));
-	}
-
-	return Ok(out);
 }

@@ -1,27 +1,31 @@
 mod chunk;
+pub mod controller;
 pub mod player;
-
-use std::{
-	collections::HashMap,
-	time::Instant,
-	{net::TcpStream, time::Duration},
-};
+pub mod world;
 
 use cubegame_lib::{communication::*, ChunkPos};
 use http::Uri;
+use std::{
+	time::Instant,
+	{net::TcpStream, time::Duration},
+};
 use tungstenite::{connect, stream::MaybeTlsStream, Message, WebSocket};
 
 use crate::render::mesh::mesher;
+use crate::render::Renderer;
 use chunk::LoadedChunk;
-use player::Player;
+use controller::PlayerController;
+use world::WorldData;
 
 /// Chunk render distance radius
 const RENDER_DISTANCE: u32 = 8;
 
+/// Struct that represents everything to run the actual cubegame
 pub struct Game {
-	pub player: Player,
-	/// Loaded chunks
-	pub chunks: HashMap<ChunkPos, LoadedChunk>,
+	/// Reference counted so things like the world render pass can have
+	pub world_data: WorldData,
+	/// player controller
+	controller: PlayerController,
 	/// Web socket connection to a game server
 	socket: WebSocket<MaybeTlsStream<TcpStream>>,
 	/// For ticking once per second
@@ -40,8 +44,8 @@ impl Game {
 		log::info!("Connected to game server at {}", server_url);
 
 		Ok(Game {
-			player: Player::new(),
-			chunks: HashMap::new(),
+			world_data: WorldData::new(),
+			controller: PlayerController::new(),
 			socket,
 			last_slow_tick: Instant::now(),
 		})
@@ -50,7 +54,8 @@ impl Game {
 	}
 
 	pub fn update(&mut self, dt: f32) {
-		self.player.update(dt);
+		// updating player from inputs
+		self.world_data.player.update(dt, &self.controller);
 
 		if self.last_slow_tick.elapsed() > Duration::from_secs(1) {
 			self.last_slow_tick = Instant::now();
@@ -69,7 +74,7 @@ impl Game {
 	/// Loads/unloads chunks based on player position
 	fn load_chunks(&mut self) -> Result<(), ()> {
 		// chunk that player is in
-		let player_chunk = self.player.chunk_pos();
+		let player_chunk = self.world_data.player.chunk_pos();
 
 		let render_dist = RENDER_DISTANCE as i32;
 		for x in (-render_dist)..=render_dist {
@@ -83,12 +88,13 @@ impl Game {
 				let dist = ((x.pow(2) + z.pow(2)) as f32).sqrt();
 				if dist < RENDER_DISTANCE as f32 {
 					// chunk should be loaded
-					if !self.chunks.contains_key(&chunk) {
+					if !self.world_data.chunks.contains_key(&chunk) {
 						self.send_msg(ServerMessage::LoadChunk(chunk));
-
 						let response = self.recv_response()?;
+
 						if let ServerResponse::LoadChunkOK(data) = response {
-							self.chunks
+							self.world_data
+								.chunks
 								.insert(chunk, LoadedChunk::load_from_delta(data));
 						} else {
 							log::error!(
@@ -100,8 +106,8 @@ impl Game {
 					}
 				} else {
 					// chunk does not need to be loaded
-					if self.chunks.contains_key(&chunk) {
-						let _unloaded_chunk = self.chunks.remove(&chunk);
+					if self.world_data.chunks.contains_key(&chunk) {
+						let _unloaded_chunk = self.world_data.chunks.remove(&chunk);
 					}
 				}
 			}
@@ -109,14 +115,21 @@ impl Game {
 		Ok(())
 	}
 
-	pub fn check_remesh(&mut self) {
-		for (_pos, chunk) in self.chunks.iter_mut() {
+	pub fn handle_input(&mut self, event: &winit::event::WindowEvent) {
+		self.controller.handle_input(event);
+	}
+
+	/// Remeshes chunks if they need to be, also binds meshes' local bind groups
+	pub fn prep_meshes(&mut self, renderer: &Renderer) {
+		for (_pos, chunk) in self.world_data.chunks.iter_mut() {
+			// remeshing chunks
 			if chunk.needs_remesh {
-				/*if chunk.regenerate_meshes(renderer).is_err() {
-					log::error!("Failed to remesh chunk at {pos}");
-				}*/
 				chunk.meshes = mesher::mesh_chunk(&chunk.data);
 				chunk.needs_remesh = false;
+			}
+			// loading mesh buffers n stuff
+			for mesh in chunk.meshes.iter_mut() {
+				mesh.load_buffers(renderer);
 			}
 		}
 	}

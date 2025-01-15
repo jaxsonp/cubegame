@@ -2,7 +2,6 @@ use crate::{
 	BlockData, ChunkData, ChunkPos, LocalBlockPos, WorldGenesisData, BLOCKS_PER_CHUNK, CHUNK_WIDTH,
 };
 use noise::NoiseFn;
-// TODO implement real world generation
 
 /// Generates simple chunk for testing
 pub fn generate_chunk(gen: &WorldGenesisData, pos: ChunkPos) -> Box<ChunkData> {

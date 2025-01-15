@@ -2,8 +2,6 @@ mod application;
 pub mod game;
 pub mod render;
 
-use std::thread;
-
 use winit::{
 	event_loop::{ControlFlow, EventLoop},
 	window::Window,
@@ -28,7 +26,7 @@ pub fn run_client() {
 	let mut app = ApplicationState::new(window_attributes);
 
 	// spawning integrated server
-	match thread::Builder::new()
+	match std::thread::Builder::new()
 		.name("integrated_server".to_string())
 		.spawn(|| {
 			if cubegame_server::run_server(INTEGRATED_SERVER_PORT).is_err() {

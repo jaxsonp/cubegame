@@ -5,13 +5,13 @@ struct Vertex {
 };
 
 // texture bindings
-@group(1) @binding(0)
+@group(0) @binding(1)
 var atlas_texture: texture_2d<f32>;
-@group(1) @binding(1)
+@group(0) @binding(2)
 var atlas_sampler: sampler;
 
 // texture altas position [x pos, y pos, x scale, y scale]
-@group(2) @binding(1)
+@group(1) @binding(1)
 var<uniform> atlas_pos: vec4<f32>;
 
 @fragment
