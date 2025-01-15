@@ -62,6 +62,17 @@ pub struct ChunkPos {
 	pub x: i32,
 	pub z: i32,
 }
+impl ChunkPos {
+	/// Converts local block coordinates in this chunk to world coordinates
+	fn to_world_coords(&self, block_pos: LocalBlockPos) -> (i32, i32, i32) {
+		let chunk_w = CHUNK_WIDTH as i32;
+		(
+			(block_pos.x() as i32) + self.x * chunk_w,
+			block_pos.y() as i32,
+			(block_pos.z() as i32) + self.z * chunk_w,
+		)
+	}
+}
 impl std::fmt::Display for ChunkPos {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		f.write_fmt(format_args!("({}, {})", self.x, self.z))
@@ -77,10 +88,10 @@ pub struct LocalBlockPos {
 	y: u8,
 }
 impl LocalBlockPos {
-	pub fn new(x: u8, y: u8, z: u8) -> LocalBlockPos {
+	pub fn new<N: Into<u8>>(x: N, y: N, z: N) -> LocalBlockPos {
 		LocalBlockPos {
-			xz: ((x & 0b1111) << 4) + (z & 0b1111),
-			y,
+			xz: ((x.into() & 0b1111) << 4) + (z.into() & 0b1111),
+			y: y.into(),
 		}
 	}
 	/// Creates local block position from index in a chunk's data array
@@ -189,5 +200,10 @@ impl Default for BlockData {
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct WorldGenesisData {
-	pub seed: u64,
+	pub seed: u32,
+}
+impl Default for WorldGenesisData {
+	fn default() -> Self {
+		WorldGenesisData { seed: 0u32 }
+	}
 }

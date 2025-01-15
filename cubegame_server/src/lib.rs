@@ -24,7 +24,12 @@ pub fn run_server(port: u16) -> Result<(), ()> {
 
 	for stream in listener.incoming() {
 		thread::spawn(move || {
-			let stream = stream.unwrap();
+			let stream = match stream {
+				Ok(s) => s,
+				Err(_) => {
+					return;
+				}
+			};
 			let mut websocket = match accept(&stream) {
 				Ok(s) => s,
 				Err(e) => {

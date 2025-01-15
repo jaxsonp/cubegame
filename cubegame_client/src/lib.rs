@@ -3,6 +3,7 @@ pub mod game;
 pub mod render;
 
 use std::thread;
+
 use winit::{
 	event_loop::{ControlFlow, EventLoop},
 	window::Window,

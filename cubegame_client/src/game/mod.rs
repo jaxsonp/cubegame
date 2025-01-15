@@ -16,7 +16,7 @@ use chunk::LoadedChunk;
 use player::Player;
 
 /// Chunk render distance radius
-const RENDER_DISTANCE: u32 = 4;
+const RENDER_DISTANCE: u32 = 8;
 
 pub struct Game {
 	pub player: Player,

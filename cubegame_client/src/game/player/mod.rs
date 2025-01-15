@@ -35,7 +35,7 @@ impl Player {
 	pub fn new() -> Self {
 		Self {
 			controller: PlayerController::new(),
-			pos: Point3::new(CHUNK_WIDTH as f32 / 2.0, 8.0, CHUNK_WIDTH as f32 / 2.0),
+			pos: Point3::new(CHUNK_WIDTH as f32 / 2.0, 40.0, CHUNK_WIDTH as f32 / 2.0),
 			facing_yaw: 0.0,
 			facing_pitch: 0.0,
 		}
@@ -99,8 +99,8 @@ impl Player {
 	/// Gets the chunk that this player is in
 	pub fn chunk_pos(&self) -> ChunkPos {
 		ChunkPos {
-			x: 0, //(self.pos.x / (CHUNK_WIDTH as f32)).floor() as i32,
-			z: 0, //(self.pos.z / (CHUNK_WIDTH as f32)).floor() as i32,
+			x: (self.pos.x / (CHUNK_WIDTH as f32)).floor() as i32,
+			z: (self.pos.z / (CHUNK_WIDTH as f32)).floor() as i32,
 		}
 	}
 }
