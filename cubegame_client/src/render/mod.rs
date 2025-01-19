@@ -1,6 +1,7 @@
-pub mod mesh;
+pub mod mesher;
+pub mod objects;
+mod passes;
 mod perspective;
-mod pipelines;
 mod texture;
 
 use std::sync::Arc;
@@ -9,9 +10,10 @@ use pollster::FutureExt;
 use winit::window::Window;
 
 use crate::game::Game;
+use crate::render::passes::LineRenderingPipeline;
+use passes::WorldRenderingPipeline;
 use perspective::Perspective;
 use perspective::OPENGL_TO_WGPU_MATRIX;
-use pipelines::{RenderPassInterface, WorldRenderingPipeline};
 use texture::depth_buffer::DepthTexture;
 
 pub struct Renderer {
@@ -25,17 +27,15 @@ pub struct Renderer {
 	pub device: wgpu::Device,
 	/// Device command queue
 	queue: wgpu::Queue,
-	// Rendering pipelines
-	/// World Rendering Pipeline, renders blocks and stuff
-	world_render_pipeline: WorldRenderingPipeline,
-	/// Layout of per-mesh bind group
-	//pub mesh_bind_group_layout: wgpu::BindGroupLayout,
 	/// Depth buffer texture (z buffer)
 	depth_buffer: DepthTexture,
 	/// Perspective matrix data used for 3d rendering
 	pub perspective: Perspective,
 	/// Buffer for camera data to go in
 	camera_buffer: wgpu::Buffer,
+	// pipelines
+	world_rendering_pipeline: WorldRenderingPipeline,
+	line_rendering_pipeline: LineRenderingPipeline,
 }
 
 impl Renderer {
@@ -104,66 +104,20 @@ impl Renderer {
 		};
 		surface.configure(&device, &config);
 
-		// setting up global bind group
 		let camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
 			label: Some("Camera Buffer"),
 			size: size_of::<[[f32; 4]; 4]>() as u64,
 			usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
 			mapped_at_creation: false,
 		});
-		/*let camera_bind_group_layout =
-					device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-						entries: &[wgpu::BindGroupLayoutEntry {
-							binding: 0,
-							visibility: wgpu::ShaderStages::VERTEX,
-							ty: wgpu::BindingType::Buffer {
-								ty: wgpu::BufferBindingType::Uniform,
-								has_dynamic_offset: false,
-								min_binding_size: None,
-							},
-							count: None,
-						}],
-						label: Some("Global bind group layout"),
-					});
-				let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-					layout: &camera_bind_group_layout,
-					entries: &[wgpu::BindGroupEntry {
-						binding: 0,
-						resource: camera_buffer.as_entire_binding(),
-					}],
-					label: Some("Global bind group"),
-				});
-		*/
-		let world_render_pipeline = WorldRenderingPipeline::new(
+		let world_rendering_pipeline = WorldRenderingPipeline::new(
 			&device,
 			&queue,
 			&config,
 			camera_buffer.as_entire_binding(),
 		)?;
-
-		// loading block textures
-		/*let texture_bind_group_layout =
-		device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-			entries: &[
-				wgpu::BindGroupLayoutEntry {
-					binding: 0,
-					visibility: wgpu::ShaderStages::FRAGMENT,
-					ty: wgpu::BindingType::Texture {
-						multisampled: false,
-						view_dimension: wgpu::TextureViewDimension::D2,
-						sample_type: wgpu::TextureSampleType::Float { filterable: false },
-					},
-					count: None,
-				},
-				wgpu::BindGroupLayoutEntry {
-					binding: 1,
-					visibility: wgpu::ShaderStages::FRAGMENT,
-					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
-					count: None,
-				},
-			],
-			label: Some("Texture bind group layout"),
-		});*/
+		let line_rendering_pipeline =
+			LineRenderingPipeline::new(&device, &config, camera_buffer.as_entire_binding())?;
 
 		let depth_texture = DepthTexture::new(&device, &config);
 
@@ -173,7 +127,6 @@ impl Renderer {
 			queue,
 			surface_config: config,
 			window,
-			world_render_pipeline,
 			depth_buffer: depth_texture,
 			perspective: Perspective::new(
 				size.width as f32 / size.height as f32,
@@ -182,6 +135,8 @@ impl Renderer {
 				1000.0,
 			),
 			camera_buffer,
+			world_rendering_pipeline,
+			line_rendering_pipeline,
 		})
 	}
 
@@ -206,41 +161,40 @@ impl Renderer {
 
 	/// Render the in game scene
 	pub fn render_game(&mut self, game: &Game) -> Result<(), wgpu::SurfaceError> {
-		let output = self.surface.get_current_texture()?;
-		let view = output
-			.texture
-			.create_view(&wgpu::TextureViewDescriptor::default());
-
-		// for talking w GPU
-		let mut encoder = self
-			.device
-			.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-				label: Some("Render Encoder"),
-			});
-
 		// updating camera buffer
-		let player_view_mat = game.world_data.player.view_matrix();
-
-		let view_proj_matrix: [[f32; 4]; 4] =
-			(OPENGL_TO_WGPU_MATRIX * self.perspective.proj_matrix() * player_view_mat).into();
+		let view_proj_matrix: [[f32; 4]; 4] = (OPENGL_TO_WGPU_MATRIX
+			* self.perspective.proj_matrix()
+			* game.world_data.player.view_matrix())
+		.into();
 		self.queue.write_buffer(
 			&self.camera_buffer,
 			0,
 			bytemuck::cast_slice(&view_proj_matrix),
 		);
 
-		if self
-			.world_render_pipeline
-			.execute_render_pass(
-				&mut encoder,
-				&view,
-				&self.depth_buffer.texture_view,
-				&game.world_data,
-			)
-			.is_err()
-		{
-			log::error!("Failed to execute world render pass");
-		}
+		let output = self.surface.get_current_texture()?;
+		let output_view = output
+			.texture
+			.create_view(&wgpu::TextureViewDescriptor::default());
+		let mut encoder = self
+			.device
+			.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+				label: Some("Render Encoder"),
+			});
+
+		self.world_rendering_pipeline.execute_render_pass(
+			&mut encoder,
+			&output_view,
+			&self.depth_buffer.texture_view,
+			&game.world_data,
+		);
+		self.line_rendering_pipeline.execute_render_pass(
+			&mut encoder,
+			&output_view,
+			&self.depth_buffer.texture_view,
+			&self.device,
+			&game.world_data,
+		);
 
 		self.queue.submit(std::iter::once(encoder.finish()));
 

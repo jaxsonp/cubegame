@@ -1,18 +1,17 @@
-use std::collections::HashMap;
-
-use super::{Mesh, Vert};
+use crate::render::objects::{vert::MeshVert, Mesh};
 use crate::render::texture::atlas::TextureAtlasKey;
 use cubegame_lib::blocks::{BlockTextureLayout, BlockType};
 use cubegame_lib::{
 	blocks::AIR_BLOCK_ID, ChunkData, Direction, Directions, LocalBlockPos, CHUNK_WIDTH,
 };
+use std::collections::HashMap;
 
 /// Turns a chunk into meshes
 ///
-/// Current implementation creates one conjoined mesh per texture
+/// Current implementation creates one conjoined objects per texture
 /// TODO remove redundant rendering on the sides of the chunk
 /// TODO randomize texture orientation
-pub fn mesh_chunk(data: &ChunkData) -> Vec<Mesh> {
+pub fn generate_chunk_meshes(data: &ChunkData) -> Vec<Mesh> {
 	let chunk_pos = data.pos;
 	let mut total_verts = 0;
 	let mut total_tris = 0;
@@ -96,12 +95,12 @@ pub fn mesh_chunk(data: &ChunkData) -> Vec<Mesh> {
 	let meshes: Vec<Mesh> = meshes
 		.into_iter()
 		.map(|(tex_key, faces_list)| {
-			let mut verts: Vec<Vert> = Vec::with_capacity(24);
+			let mut verts: Vec<MeshVert> = Vec::with_capacity(24);
 			let mut indices: Vec<u32> = Vec::with_capacity(36);
 
 			for (pos, faces) in faces_list.into_iter() {
 				// Helper function to set up verts and indices for each face
-				let mut add_face = |mut new_verts: [Vert; 4]| {
+				let mut add_face = |mut new_verts: [MeshVert; 4]| {
 					let n_verts = verts.len() as u32;
 					indices.extend_from_slice(&[
 						n_verts,
@@ -123,19 +122,19 @@ pub fn mesh_chunk(data: &ChunkData) -> Vec<Mesh> {
 					// right face
 
 					add_face([
-						Vert {
+						MeshVert {
 							pos: [1.0, 0.0, 1.0],
 							tex_coord: [0.0, 1.0],
 						},
-						Vert {
+						MeshVert {
 							pos: [1.0, 0.0, 0.0],
 							tex_coord: [1.0, 1.0],
 						},
-						Vert {
+						MeshVert {
 							pos: [1.0, 1.0, 0.0],
 							tex_coord: [1.0, 0.0],
 						},
-						Vert {
+						MeshVert {
 							pos: [1.0, 1.0, 1.0],
 							tex_coord: [0.0, 0.0],
 						},
@@ -143,19 +142,19 @@ pub fn mesh_chunk(data: &ChunkData) -> Vec<Mesh> {
 				}
 				if faces.contains(Directions::NegX) {
 					add_face([
-						Vert {
+						MeshVert {
 							pos: [0.0, 0.0, 0.0],
 							tex_coord: [0.0, 1.0],
 						},
-						Vert {
+						MeshVert {
 							pos: [0.0, 0.0, 1.0],
 							tex_coord: [1.0, 1.0],
 						},
-						Vert {
+						MeshVert {
 							pos: [0.0, 1.0, 1.0],
 							tex_coord: [1.0, 0.0],
 						},
-						Vert {
+						MeshVert {
 							pos: [0.0, 1.0, 0.0],
 							tex_coord: [0.0, 0.0],
 						},
@@ -163,19 +162,19 @@ pub fn mesh_chunk(data: &ChunkData) -> Vec<Mesh> {
 				}
 				if faces.contains(Directions::PosY) {
 					add_face([
-						Vert {
+						MeshVert {
 							pos: [0.0, 1.0, 1.0],
 							tex_coord: [0.0, 1.0],
 						},
-						Vert {
+						MeshVert {
 							pos: [1.0, 1.0, 1.0],
 							tex_coord: [1.0, 1.0],
 						},
-						Vert {
+						MeshVert {
 							pos: [1.0, 1.0, 0.0],
 							tex_coord: [1.0, 0.0],
 						},
-						Vert {
+						MeshVert {
 							pos: [0.0, 1.0, 0.0],
 							tex_coord: [0.0, 0.0],
 						},
@@ -183,19 +182,19 @@ pub fn mesh_chunk(data: &ChunkData) -> Vec<Mesh> {
 				}
 				if faces.contains(Directions::NegY) {
 					add_face([
-						Vert {
+						MeshVert {
 							pos: [0.0, 0.0, 0.0],
 							tex_coord: [0.0, 1.0],
 						},
-						Vert {
+						MeshVert {
 							pos: [1.0, 0.0, 0.0],
 							tex_coord: [1.0, 1.0],
 						},
-						Vert {
+						MeshVert {
 							pos: [1.0, 0.0, 1.0],
 							tex_coord: [1.0, 0.0],
 						},
-						Vert {
+						MeshVert {
 							pos: [0.0, 0.0, 1.0],
 							tex_coord: [0.0, 0.0],
 						},
@@ -203,19 +202,19 @@ pub fn mesh_chunk(data: &ChunkData) -> Vec<Mesh> {
 				}
 				if faces.contains(Directions::PosZ) {
 					add_face([
-						Vert {
+						MeshVert {
 							pos: [0.0, 0.0, 1.0],
 							tex_coord: [0.0, 1.0],
 						},
-						Vert {
+						MeshVert {
 							pos: [1.0, 0.0, 1.0],
 							tex_coord: [1.0, 1.0],
 						},
-						Vert {
+						MeshVert {
 							pos: [1.0, 1.0, 1.0],
 							tex_coord: [1.0, 0.0],
 						},
-						Vert {
+						MeshVert {
 							pos: [0.0, 1.0, 1.0],
 							tex_coord: [0.0, 0.0],
 						},
@@ -223,19 +222,19 @@ pub fn mesh_chunk(data: &ChunkData) -> Vec<Mesh> {
 				}
 				if faces.contains(Directions::NegZ) {
 					add_face([
-						Vert {
+						MeshVert {
 							pos: [1.0, 0.0, 0.0],
 							tex_coord: [0.0, 1.0],
 						},
-						Vert {
+						MeshVert {
 							pos: [0.0, 0.0, 0.0],
 							tex_coord: [1.0, 1.0],
 						},
-						Vert {
+						MeshVert {
 							pos: [0.0, 1.0, 0.0],
 							tex_coord: [1.0, 0.0],
 						},
-						Vert {
+						MeshVert {
 							pos: [1.0, 1.0, 0.0],
 							tex_coord: [0.0, 0.0],
 						},
@@ -257,3 +256,18 @@ pub fn mesh_chunk(data: &ChunkData) -> Vec<Mesh> {
 	);*/
 	meshes
 }
+
+/*pub fn generate_chunk_debug_lines(data: &ChunkData) -> Vec<Line> {
+	let mut lines: Vec<Line> = Vec::new();
+	let x = (data.pos.x * (CHUNK_WIDTH as i32)) as f32;
+	let z = (data.pos.z * (CHUNK_WIDTH as i32)) as f32;
+
+	lines.push(Line::new(
+		LineVert::new(x, 0.0, z),
+		LineVert::new(x, WORLD_HEIGHT as f32, z),
+		CHUNK_BORDER_COLOR,
+	));
+
+	lines
+}
+*/

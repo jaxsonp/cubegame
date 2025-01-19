@@ -11,6 +11,8 @@ use application::ApplicationState;
 
 pub const INTEGRATED_SERVER_PORT: u16 = 5005;
 
+const CHUNK_BORDER_COLOR: [f32; 3] = [1.0, 0.0, 0.0];
+
 pub fn run_client() {
 	env_logger::init();
 

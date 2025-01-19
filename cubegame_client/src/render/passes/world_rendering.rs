@@ -5,11 +5,10 @@ use cubegame_lib::blocks::{BlockTextureLayout, BLOCK_TYPES};
 use cubegame_lib::Direction;
 use image::{ImageReader, RgbaImage};
 
-use super::RenderPassInterface;
 use crate::{
 	game::world::WorldData,
 	render::{
-		mesh::vert::Vert,
+		objects::vert::MeshVert,
 		texture::{
 			atlas::{TextureAtlas, TextureAtlasKey},
 			depth_buffer::DepthTexture,
@@ -21,14 +20,16 @@ use crate::{
 ///
 /// Bind groups and bindings:
 /// 	0: "global" set once per frame
-/// 		0 - Camera (view/projection) matrix
+/// 		0 - Camera (view/projection) matrix: 4x4 float matrix
 /// 		1 - Texture atlas texture view
 /// 		2 - Texture atlas sampler
-/// 	1: "local" set once per mesh/object
+/// 	1: "local" set once per objects/object
+/// 		0 - Mesh position (aka vert offset): float vector3
+/// 		1 - Texture atlas position: [x pos, y pos, x scale, y scale]
 pub struct WorldRenderingPipeline {
 	pipeline: wgpu::RenderPipeline,
 	global_bind_group: wgpu::BindGroup,
-	/// Layout of the local bind group for each mesh
+	/// Layout of the local bind group for each objects
 	pub(crate) local_bind_group_layout: wgpu::BindGroupLayout,
 	/// Atlas containing all the packed block textures
 	pub block_texture_atlas: TextureAtlas,
@@ -134,15 +135,15 @@ impl WorldRenderingPipeline {
 			layout: Some(&layout),
 			vertex: wgpu::VertexState {
 				module: &vert_shader,
-				entry_point: "main",
+				entry_point: Some("main"),
 				buffers: &[
-					Vert::buffer_layout(), // vert buffer
+					MeshVert::buffer_layout(), // vert buffer
 				],
 				compilation_options: wgpu::PipelineCompilationOptions::default(),
 			},
 			fragment: Some(wgpu::FragmentState {
 				module: &frag_shader,
-				entry_point: "main",
+				entry_point: Some("main"),
 				targets: &[Some(wgpu::ColorTargetState {
 					format: surface_config.format,
 					blend: Some(wgpu::BlendState::REPLACE),
@@ -185,16 +186,17 @@ impl WorldRenderingPipeline {
 			block_texture_atlas,
 		})
 	}
-}
-impl RenderPassInterface<WorldData> for WorldRenderingPipeline {
+
+	/// Executes a render pass on the given command encoder
+	///
 	/// Clears to white, also clears depth texture
-	fn execute_render_pass(
+	pub fn execute_render_pass(
 		&self,
 		encoder: &mut wgpu::CommandEncoder,
 		surface_texture_view: &wgpu::TextureView,
 		depth_texture_view: &wgpu::TextureView,
 		world_data: &WorldData,
-	) -> Result<(), ()> {
+	) {
 		let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 			label: Some("World rendering pass"),
 			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -242,7 +244,6 @@ impl RenderPassInterface<WorldData> for WorldRenderingPipeline {
 				render_pass.draw_indexed(0..(mesh.n_tris * 3), 0, 0..1);
 			}
 		}
-		Ok(())
 	}
 }
 

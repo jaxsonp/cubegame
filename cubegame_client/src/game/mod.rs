@@ -11,7 +11,7 @@ use std::{
 };
 use tungstenite::{connect, stream::MaybeTlsStream, Message, WebSocket};
 
-use crate::render::mesh::mesher;
+use crate::render::mesher;
 use crate::render::Renderer;
 use chunk::LoadedChunk;
 use controller::PlayerController;
@@ -124,10 +124,9 @@ impl Game {
 		for (_pos, chunk) in self.world_data.chunks.iter_mut() {
 			// remeshing chunks
 			if chunk.needs_remesh {
-				chunk.meshes = mesher::mesh_chunk(&chunk.data);
+				chunk.meshes = mesher::generate_chunk_meshes(&chunk.data);
 				chunk.needs_remesh = false;
 			}
-			// loading mesh buffers n stuff
 			for mesh in chunk.meshes.iter_mut() {
 				mesh.load_buffers(renderer);
 			}

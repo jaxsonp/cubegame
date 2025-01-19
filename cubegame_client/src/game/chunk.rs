@@ -1,12 +1,14 @@
 use cubegame_lib::{worldgen, ChunkData, ChunkDeltaData, WorldGenesisData};
 
-use crate::render::mesh::Mesh;
+use crate::render::objects::Mesh;
 
 pub struct LoadedChunk {
 	/// Chunk data: blocks
 	pub data: Box<ChunkData>,
 	/// This chunks meshes (one for each texture)
 	pub meshes: Vec<Mesh>,
+	/// This chunks debug lines
+	//pub debug_lines: Vec<Line>,
 	pub needs_remesh: bool,
 }
 impl LoadedChunk {
@@ -27,6 +29,7 @@ impl LoadedChunk {
 		LoadedChunk {
 			data: chunk,
 			meshes: Vec::new(),
+			//debug_lines: Vec::new(),
 			needs_remesh: true,
 		}
 	}

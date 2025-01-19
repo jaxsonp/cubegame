@@ -1,25 +1,22 @@
-pub mod mesher;
-pub mod vert;
-
+use crate::render::objects::vert::MeshVert;
 use crate::render::texture::atlas::TextureAtlasKey;
 use crate::render::Renderer;
-use vert::Vert;
 use wgpu::{
 	util::{BufferInitDescriptor, DeviceExt},
 	BufferUsages,
 };
 
-/// Represents whether the mesh has been loaded into buffers and such, and if not, contains the data to load it
+/// Represents whether the objects has been loaded into buffers and such, and if not, contains the data to load it
 pub enum MeshRenderState {
 	Loaded(MeshRenderObjects),
 	Unloaded {
-		verts: Vec<Vert>,
+		verts: Vec<MeshVert>,
 		indices: Vec<u32>,
 		texture: TextureAtlasKey,
 	},
 }
 
-/// Everything required to render a mesh, used by the world rendering pipeline
+/// Everything required to render a objects, used by the world rendering pipeline
 pub struct MeshRenderObjects {
 	pub vertex_buffer: wgpu::Buffer,
 	pub index_buffer: wgpu::Buffer,
@@ -33,12 +30,12 @@ pub struct Mesh {
 	pub n_tris: u32,
 	/// Position offset
 	pub pos: [f32; 3],
-	/// Whether this mesh has been loaded
+	/// Whether this objects has been loaded
 	pub render_state: MeshRenderState,
 }
 impl Mesh {
 	pub fn new(
-		verts: Vec<Vert>,
+		verts: Vec<MeshVert>,
 		indices: Vec<u32>,
 		pos: &[f32; 3],
 		texture: TextureAtlasKey,
@@ -63,7 +60,7 @@ impl Mesh {
 		}
 	}
 
-	/// Creates buffers and bind group for this mesh if it hasn't been loaded already
+	/// Creates buffers and bind group for this objects if it hasn't been loaded already
 	pub fn load_buffers(&mut self, renderer: &Renderer) {
 		match &self.render_state {
 			MeshRenderState::Unloaded {
@@ -71,19 +68,19 @@ impl Mesh {
 				indices,
 				texture,
 			} => {
-				// position offset of this whole mesh
+				// position offset of this whole objects
 				let pos_buffer = renderer.device.create_buffer_init(&BufferInitDescriptor {
 					label: Some("Mesh position buffer"),
 					contents: bytemuck::cast_slice(&self.pos),
-					usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+					usage: BufferUsages::UNIFORM,
 				});
 				let atlas_pos_rect = renderer
-					.world_render_pipeline
+					.world_rendering_pipeline
 					.block_texture_atlas
 					.get_pos_of(*texture)
 					.unwrap_or_else(|| {
 						renderer
-							.world_render_pipeline
+							.world_rendering_pipeline
 							.block_texture_atlas
 							.get_pos_of(TextureAtlasKey::Null)
 							.unwrap()
@@ -92,12 +89,12 @@ impl Mesh {
 				let atlas_pos_buffer = renderer.device.create_buffer_init(&BufferInitDescriptor {
 					label: Some("Mesh texture atlas position buffer"),
 					contents: bytemuck::cast_slice(atlas_pos_rect),
-					usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+					usage: BufferUsages::UNIFORM,
 				});
 				let bind_group = renderer
 					.device
 					.create_bind_group(&wgpu::BindGroupDescriptor {
-						layout: &renderer.world_render_pipeline.local_bind_group_layout,
+						layout: &renderer.world_rendering_pipeline.local_bind_group_layout,
 						entries: &[
 							wgpu::BindGroupEntry {
 								binding: 0,
@@ -132,7 +129,7 @@ impl Mesh {
 		}
 	}
 
-	/// Adds one mesh into another (both must be unloaded
+	/// Adds one objects into another (both must be unloaded
 	/*pub fn union(&mut self, new_mesh: Mesh) -> Result<(), ()> {
 		match (&mut self.render_state, new_mesh.render_state) {
 			(
@@ -171,7 +168,7 @@ impl Mesh {
 		}
 	}*/
 
-	/// Generates a cube mesh with only certain faces
+	/// Generates a cube objects with only certain faces
 	/*pub fn new_block_from_faces(
 		faces: Direction,
 		x: i32,
