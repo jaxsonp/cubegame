@@ -1,8 +1,12 @@
-use crate::render::objects::{vert::MeshVert, Mesh};
+use crate::render::objects::lines::LineVert;
+use crate::render::objects::mesh::vert::MeshVert;
+use crate::render::objects::{Lines, Mesh};
 use crate::render::texture::atlas::TextureAtlasKey;
+use crate::CHUNK_BORDER_COLOR;
 use cubegame_lib::blocks::{BlockTextureLayout, BlockType};
 use cubegame_lib::{
 	blocks::AIR_BLOCK_ID, ChunkData, Direction, Directions, LocalBlockPos, CHUNK_WIDTH,
+	WORLD_HEIGHT,
 };
 use std::collections::HashMap;
 
@@ -86,7 +90,7 @@ pub fn generate_chunk_meshes(data: &ChunkData) -> Vec<Mesh> {
 		}
 	}
 
-	let pos_offset = &[
+	let pos_offset = [
 		chunk_pos.x as f32 * CHUNK_WIDTH as f32,
 		0.0,
 		chunk_pos.z as f32 * CHUNK_WIDTH as f32,
@@ -257,17 +261,20 @@ pub fn generate_chunk_meshes(data: &ChunkData) -> Vec<Mesh> {
 	meshes
 }
 
-/*pub fn generate_chunk_debug_lines(data: &ChunkData) -> Vec<Line> {
-	let mut lines: Vec<Line> = Vec::new();
-	let x = (data.pos.x * (CHUNK_WIDTH as i32)) as f32;
-	let z = (data.pos.z * (CHUNK_WIDTH as i32)) as f32;
-
-	lines.push(Line::new(
-		LineVert::new(x, 0.0, z),
-		LineVert::new(x, WORLD_HEIGHT as f32, z),
-		CHUNK_BORDER_COLOR,
-	));
-
-	lines
+pub fn generate_chunk_border_lines(data: &ChunkData) -> Lines {
+	let width = CHUNK_WIDTH as f32;
+	let height = WORLD_HEIGHT as f32;
+	let verts: Vec<LineVert> = vec![
+		LineVert::new(0.0, 0.0, 0.0),
+		LineVert::new(0.0, height, 0.0),
+		LineVert::new(width, 0.0, 0.0),
+		LineVert::new(width, height, 0.0),
+		LineVert::new(0.0, 0.0, width),
+		LineVert::new(0.0, height, width),
+		LineVert::new(width, 0.0, width),
+		LineVert::new(width, height, width),
+	];
+	let x = data.pos.x as f32 * width;
+	let z = data.pos.z as f32 * width;
+	Lines::new(verts, [x, 0.0, z], CHUNK_BORDER_COLOR)
 }
-*/

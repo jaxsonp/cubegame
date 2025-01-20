@@ -1,10 +1,35 @@
 
-struct Vertex {
+
+struct Camera {
+    view_proj: mat4x4<f32>,
+};
+@group(0) @binding(0)
+var<uniform> camera: Camera;
+
+@group(1) @binding(0)
+var<uniform> mesh_pos: vec3<f32>;
+
+struct VertexInput {
+    @location(0) pos: vec3<f32>,
+    @location(1) tex_coord: vec2<f32>
+}
+
+struct VertexOutput {
     @builtin(position) clip_pos: vec4<f32>,
     @location(0) tex_coord: vec2<f32>
 };
 
-// texture bindings
+@vertex
+fn vs_main(
+    vert: VertexInput,
+) -> VertexOutput {
+
+    var out: VertexOutput;
+    out.clip_pos = camera.view_proj * vec4<f32>(vert.pos + mesh_pos, 1.0);
+    out.tex_coord = vert.tex_coord;
+    return out;
+}
+
 @group(0) @binding(1)
 var atlas_texture: texture_2d<f32>;
 @group(0) @binding(2)
@@ -15,7 +40,7 @@ var atlas_sampler: sampler;
 var<uniform> atlas_pos: vec4<f32>;
 
 @fragment
-fn main(in: Vertex) -> @location(0) vec4<f32> {
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let size = textureDimensions(atlas_texture);
 
     // translating texture coord to atlas

@@ -1,6 +1,6 @@
+use crate::render::mesher;
+use crate::render::objects::{Lines, Mesh};
 use cubegame_lib::{worldgen, ChunkData, ChunkDeltaData, WorldGenesisData};
-
-use crate::render::objects::Mesh;
 
 pub struct LoadedChunk {
 	/// Chunk data: blocks
@@ -8,18 +8,19 @@ pub struct LoadedChunk {
 	/// This chunks meshes (one for each texture)
 	pub meshes: Vec<Mesh>,
 	/// This chunks debug lines
-	//pub debug_lines: Vec<Line>,
+	pub border_lines: Lines,
 	pub needs_remesh: bool,
 }
 impl LoadedChunk {
 	/// Loads new chunk from chunk data
 	///
-	/// (Does not generate meshes)
+	/// (Does not generate meshes) (but does generate chunk borders cus those never change)
 	pub fn load_from_delta(delta: ChunkDeltaData) -> LoadedChunk {
 		let chunk_pos = delta.pos;
 
 		// data from the world generator
 		let mut chunk = worldgen::generate_chunk(&WorldGenesisData::default(), chunk_pos);
+		let border_lines = mesher::generate_chunk_border_lines(chunk.as_ref());
 
 		// overwriting block data with blocks from chunk delta
 		for (pos, data) in delta.blocks {
@@ -29,7 +30,7 @@ impl LoadedChunk {
 		LoadedChunk {
 			data: chunk,
 			meshes: Vec::new(),
-			//debug_lines: Vec::new(),
+			border_lines,
 			needs_remesh: true,
 		}
 	}

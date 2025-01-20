@@ -130,6 +130,7 @@ impl Game {
 			for mesh in chunk.meshes.iter_mut() {
 				mesh.load_buffers(renderer);
 			}
+			chunk.border_lines.load_buffers(renderer);
 		}
 	}
 

@@ -5,14 +5,12 @@ use cubegame_lib::blocks::{BlockTextureLayout, BLOCK_TYPES};
 use cubegame_lib::Direction;
 use image::{ImageReader, RgbaImage};
 
+use crate::render::objects::mesh::vert::MeshVert;
 use crate::{
 	game::world::WorldData,
-	render::{
-		objects::vert::MeshVert,
-		texture::{
-			atlas::{TextureAtlas, TextureAtlasKey},
-			depth_buffer::DepthTexture,
-		},
+	render::texture::{
+		atlas::{TextureAtlas, TextureAtlasKey},
+		depth_buffer::DepthTexture,
 	},
 };
 
@@ -23,14 +21,14 @@ use crate::{
 /// 		0 - Camera (view/projection) matrix: 4x4 float matrix
 /// 		1 - Texture atlas texture view
 /// 		2 - Texture atlas sampler
-/// 	1: "local" set once per objects/object
+/// 	1: "local" set once per mesh/object
 /// 		0 - Mesh position (aka vert offset): float vector3
 /// 		1 - Texture atlas position: [x pos, y pos, x scale, y scale]
 pub struct WorldRenderingPipeline {
 	pipeline: wgpu::RenderPipeline,
 	global_bind_group: wgpu::BindGroup,
-	/// Layout of the local bind group for each objects
-	pub(crate) local_bind_group_layout: wgpu::BindGroupLayout,
+	/// Layout of the local bind group for each mesh
+	pub local_bind_group_layout: wgpu::BindGroupLayout,
 	/// Atlas containing all the packed block textures
 	pub block_texture_atlas: TextureAtlas,
 }
@@ -126,24 +124,21 @@ impl WorldRenderingPipeline {
 			bind_group_layouts: &[&global_bind_group_layout, &local_bind_group_layout],
 			push_constant_ranges: &[],
 		});
-		let vert_shader =
-			device.create_shader_module(wgpu::include_wgsl!("world_shader_vert.wgsl"));
-		let frag_shader =
-			device.create_shader_module(wgpu::include_wgsl!("world_shader_frag.wgsl"));
+		let shader = device.create_shader_module(wgpu::include_wgsl!("world_shader.wgsl"));
 		let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
 			label: Some("World rendering pipeline"),
 			layout: Some(&layout),
 			vertex: wgpu::VertexState {
-				module: &vert_shader,
-				entry_point: Some("main"),
+				module: &shader,
+				entry_point: Some("vs_main"),
 				buffers: &[
 					MeshVert::buffer_layout(), // vert buffer
 				],
 				compilation_options: wgpu::PipelineCompilationOptions::default(),
 			},
 			fragment: Some(wgpu::FragmentState {
-				module: &frag_shader,
-				entry_point: Some("main"),
+				module: &shader,
+				entry_point: Some("fs_main"),
 				targets: &[Some(wgpu::ColorTargetState {
 					format: surface_config.format,
 					blend: Some(wgpu::BlendState::REPLACE),

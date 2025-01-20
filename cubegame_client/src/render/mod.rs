@@ -192,7 +192,6 @@ impl Renderer {
 			&mut encoder,
 			&output_view,
 			&self.depth_buffer.texture_view,
-			&self.device,
 			&game.world_data,
 		);
 

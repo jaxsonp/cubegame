@@ -1,19 +1,18 @@
-use super::super::objects::LineVert;
-use crate::{
-	game::world::WorldData, render::texture::depth_buffer::DepthTexture, CHUNK_BORDER_COLOR,
-};
-use cubegame_lib::{CHUNK_WIDTH, WORLD_HEIGHT};
-use wgpu::util::{BufferInitDescriptor, DeviceExt};
+use crate::render::objects::lines::LineVert;
+use crate::{game::world::WorldData, render::texture::depth_buffer::DepthTexture};
 
 /// Render pipeline for rendering debug lines and stuff
 ///
 /// Bind groups and bindings:
-/// 	0: "global" set once per frame ( !!! SET BY WORLD RENDERING PASS EARLIER )
+/// 	0: "global" set once per frame
 /// 		0 - Camera (view/projection) matrix: 4x4 float matrix
-/// 		1 - Line color : float vector3
+/// 	1: "local" set once per line group
+/// 		0 - Pos offset: vec3 of floats
+/// 		1 - Color: vec3 of floats
 pub struct LineRenderingPipeline {
 	pipeline: wgpu::RenderPipeline,
 	global_bind_group: wgpu::BindGroup,
+	pub local_bind_group_layout: wgpu::BindGroupLayout,
 	pub show_chunk_borders: bool,
 }
 impl LineRenderingPipeline {
@@ -23,6 +22,28 @@ impl LineRenderingPipeline {
 		camera_bind_resource: wgpu::BindingResource,
 	) -> Result<Self, ()> {
 		let global_bind_group_layout =
+			device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+				entries: &[wgpu::BindGroupLayoutEntry {
+					binding: 0,
+					visibility: wgpu::ShaderStages::VERTEX,
+					ty: wgpu::BindingType::Buffer {
+						ty: wgpu::BufferBindingType::Uniform,
+						has_dynamic_offset: false,
+						min_binding_size: None,
+					},
+					count: None,
+				}],
+				label: Some("Line rendering global bind group layout"),
+			});
+		let global_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+			layout: &global_bind_group_layout,
+			entries: &[wgpu::BindGroupEntry {
+				binding: 0,
+				resource: camera_bind_resource,
+			}],
+			label: Some("Line rendering global bind group"),
+		});
+		let local_bind_group_layout =
 			device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
 				entries: &[
 					wgpu::BindGroupLayoutEntry {
@@ -37,7 +58,7 @@ impl LineRenderingPipeline {
 					},
 					wgpu::BindGroupLayoutEntry {
 						binding: 1,
-						visibility: wgpu::ShaderStages::FRAGMENT,
+						visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
 						ty: wgpu::BindingType::Buffer {
 							ty: wgpu::BufferBindingType::Uniform,
 							has_dynamic_offset: false,
@@ -46,30 +67,11 @@ impl LineRenderingPipeline {
 						count: None,
 					},
 				],
-				label: Some("Line rendering global bind group layout"),
+				label: Some("Line rendering local bind group layout"),
 			});
-		let color_buffer = device.create_buffer_init(&BufferInitDescriptor {
-			label: Some("Line rendering color buffer"),
-			contents: &bytemuck::cast_slice(&CHUNK_BORDER_COLOR),
-			usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-		});
-		let global_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-			layout: &global_bind_group_layout,
-			entries: &[
-				wgpu::BindGroupEntry {
-					binding: 0,
-					resource: camera_bind_resource,
-				},
-				wgpu::BindGroupEntry {
-					binding: 1,
-					resource: color_buffer.as_entire_binding(),
-				},
-			],
-			label: Some("Line rendering global bind group"),
-		});
 		let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("Line rendering pipeline layout"),
-			bind_group_layouts: &[&global_bind_group_layout],
+			bind_group_layouts: &[&global_bind_group_layout, &local_bind_group_layout],
 			push_constant_ranges: &[],
 		});
 		let shader = device.create_shader_module(wgpu::include_wgsl!("line_shader.wgsl"));
@@ -106,7 +108,7 @@ impl LineRenderingPipeline {
 			depth_stencil: Some(wgpu::DepthStencilState {
 				format: DepthTexture::FORMAT,
 				depth_write_enabled: true,
-				depth_compare: wgpu::CompareFunction::Less,
+				depth_compare: wgpu::CompareFunction::LessEqual,
 				stencil: wgpu::StencilState::default(),
 				bias: wgpu::DepthBiasState::default(),
 			}),
@@ -123,6 +125,7 @@ impl LineRenderingPipeline {
 		Ok(LineRenderingPipeline {
 			pipeline,
 			global_bind_group,
+			local_bind_group_layout,
 			show_chunk_borders: true,
 		})
 	}
@@ -135,7 +138,6 @@ impl LineRenderingPipeline {
 		encoder: &mut wgpu::CommandEncoder,
 		surface_texture_view: &wgpu::TextureView,
 		depth_texture_view: &wgpu::TextureView,
-		device: &wgpu::Device,
 		world_data: &WorldData,
 	) {
 		let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -152,7 +154,7 @@ impl LineRenderingPipeline {
 				view: depth_texture_view,
 				depth_ops: Some(wgpu::Operations {
 					load: wgpu::LoadOp::Load,
-					store: wgpu::StoreOp::Store,
+					store: wgpu::StoreOp::Discard,
 				}),
 				stencil_ops: None,
 			}),
@@ -165,19 +167,14 @@ impl LineRenderingPipeline {
 		render_pass.set_bind_group(0, &self.global_bind_group, &[]);
 
 		if self.show_chunk_borders {
-			for (pos, _chunk) in world_data.chunks.iter() {
-				let x = (pos.x * (CHUNK_WIDTH as i32)) as f32;
-				let z = (pos.z * (CHUNK_WIDTH as i32)) as f32;
-				let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-					label: Some("Chunk border line vertex buffer"),
-					contents: bytemuck::cast_slice(&[
-						LineVert::new(x, 0.0, z),
-						LineVert::new(x, WORLD_HEIGHT as f32, z),
-					]),
-					usage: wgpu::BufferUsages::VERTEX,
-				});
-				render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-				render_pass.draw(0..2, 0..1);
+			for (_pos, chunk) in world_data.chunks.iter() {
+				let render_objs = match chunk.border_lines.get_render_objs() {
+					Some(render_objs) => render_objs,
+					None => continue,
+				};
+				render_pass.set_vertex_buffer(0, render_objs.vertex_buffer.slice(..));
+				render_pass.set_bind_group(1, &render_objs.bind_group, &[]);
+				render_pass.draw(0..(chunk.border_lines.n_lines * 2), 0..1);
 			}
 		}
 	}
