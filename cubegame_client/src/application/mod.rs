@@ -1,15 +1,15 @@
 mod framerate;
 
+use crate::{game::Game, render::Renderer, INTEGRATED_SERVER_PORT};
+use framerate::FramerateManager;
 use std::sync::Arc;
+use winit::event::{DeviceEvent, DeviceId};
 use winit::{
 	application::ApplicationHandler,
 	event::WindowEvent,
 	event_loop::ActiveEventLoop,
 	window::{Window, WindowAttributes, WindowId},
 };
-
-use crate::{game::Game, render::Renderer, INTEGRATED_SERVER_PORT};
-use framerate::FramerateManager;
 
 /// Application handler struct
 pub enum ApplicationState {
@@ -18,8 +18,8 @@ pub enum ApplicationState {
 		/// Application window (needs to be arced because the renderer and the render surface
 		/// constructor (which is async) needs it
 		window: Arc<Window>,
-		framerate_manager: FramerateManager,
 		game: Game,
+		framerate_manager: FramerateManager,
 	},
 	/// Uninitialized state, with the attributes to initialize the window with
 	Uninitialized(WindowAttributes),
@@ -57,7 +57,7 @@ impl ApplicationState {
 				.path_and_query("/")
 				.build()
 				.unwrap();
-			let game = Game::new(game_server_uri)?;
+			let game = Game::new(game_server_uri, window.clone())?;
 
 			*self = ApplicationState::InGame {
 				renderer,
@@ -98,7 +98,8 @@ impl ApplicationHandler for ApplicationState {
 				framerate_manager,
 				game,
 			} => {
-				game.handle_input(&event);
+				game.handle_window_event(&event);
+
 				match event {
 					WindowEvent::RedrawRequested => {
 						if window_id != window.id() {
@@ -138,6 +139,20 @@ impl ApplicationHandler for ApplicationState {
 				WindowEvent::CloseRequested => event_loop.exit(),
 				_ => {}
 			},
+		}
+	}
+
+	fn device_event(
+		&mut self,
+		_event_loop: &ActiveEventLoop,
+		_device_id: DeviceId,
+		event: DeviceEvent,
+	) {
+		match self {
+			ApplicationState::InGame { game, .. } => {
+				game.handle_device_event(&event);
+			}
+			ApplicationState::Uninitialized(_) => {}
 		}
 	}
 

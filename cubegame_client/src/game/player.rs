@@ -24,8 +24,8 @@ impl Player {
 	/// Movement speed vertically, in units per second
 	const MOVE_SPEED_VERTICAL: f32 = 8.0;
 
-	/// look rotation speed, in degrees per second
-	const LOOK_SPEED: f32 = 90.0;
+	/// look rotation speed, in degrees per mouse movement unit
+	const TURN_SPEED: f32 = 0.2;
 	/// Angle to clamp the player's facing pitch, in degrees
 	const PITCH_LIMIT: f32 = (PI / 2.0) - 0.01;
 
@@ -44,7 +44,7 @@ impl Player {
 		yaw_rot * (pitch_rot * -Vector3::z()).normalize()
 	}
 
-	pub fn update(&mut self, dt: f32, controller: &PlayerController) {
+	pub fn update(&mut self, dt: f32, controller: &mut PlayerController) {
 		let up = Vector3::<f32>::y();
 		let facing = self.facing_vec();
 
@@ -54,24 +54,24 @@ impl Player {
 
 		let mut movement = Vector3::<f32>::zeros();
 		let mut moved = false;
-		if controller.forward() {
+		if controller.inputting_forward() {
 			movement += forward() * Self::MOVE_SPEED_FORWARD * dt;
 			moved = true;
-		} else if controller.backward() {
+		} else if controller.inputting_backward() {
 			movement += -forward() * Self::MOVE_SPEED_BACKWARD * dt;
 			moved = true;
 		}
-		if controller.left() {
+		if controller.inputting_left() {
 			movement += left() * Self::MOVE_SPEED_LATERAL * dt;
 			moved = true;
-		} else if controller.right() {
+		} else if controller.inputting_right() {
 			movement += -left() * Self::MOVE_SPEED_LATERAL * dt;
 			moved = true;
 		}
-		if controller.up() {
+		if controller.inputting_up() {
 			movement += up * Self::MOVE_SPEED_VERTICAL * dt;
 			moved = true;
-		} else if controller.down() {
+		} else if controller.inputting_down() {
 			movement += -up * Self::MOVE_SPEED_VERTICAL * dt;
 			moved = true;
 		}
@@ -80,11 +80,15 @@ impl Player {
 			self.pos = new_pos.as_slice().try_into().unwrap();
 		}
 
-		if controller.looking_up() {
+		self.facing_pitch += controller.turn_amount_y() as f32 * Self::TURN_SPEED.to_radians();
+		self.facing_pitch = self
+			.facing_pitch
+			.clamp(-Player::PITCH_LIMIT, Player::PITCH_LIMIT);
+		self.facing_yaw += controller.turn_amount_x() as f32 * Self::TURN_SPEED.to_radians();
+		self.facing_yaw %= PI * 2.0;
+		controller.reset_turn_amount();
+		/*if controller.looking_up() {
 			self.facing_pitch += Self::LOOK_SPEED.to_radians() * dt;
-			self.facing_pitch = self
-				.facing_pitch
-				.clamp(-Player::PITCH_LIMIT, Player::PITCH_LIMIT);
 		} else if controller.looking_down() {
 			self.facing_pitch -= Self::LOOK_SPEED.to_radians() * dt;
 			self.facing_pitch = self
@@ -96,8 +100,7 @@ impl Player {
 			self.facing_yaw %= PI * 2.0;
 		} else if controller.looking_right() {
 			self.facing_yaw -= Self::LOOK_SPEED.to_radians() * dt;
-			self.facing_yaw %= PI * 2.0;
-		}
+		}*/
 	}
 
 	/// Gets the chunk that this player is in

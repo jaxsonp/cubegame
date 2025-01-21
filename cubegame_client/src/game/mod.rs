@@ -3,16 +3,20 @@ pub mod controller;
 pub mod player;
 pub mod world;
 
-use cubegame_lib::{communication::*, ChunkPos};
-use http::Uri;
+use std::sync::Arc;
 use std::{
 	time::Instant,
 	{net::TcpStream, time::Duration},
 };
-use tungstenite::{connect, stream::MaybeTlsStream, Message, WebSocket};
 
-use crate::render::mesher;
-use crate::render::Renderer;
+use cubegame_lib::{communication::*, ChunkPos};
+use http::Uri;
+use tungstenite::{connect, stream::MaybeTlsStream, Message, WebSocket};
+use winit::event::{DeviceEvent, ElementState, KeyEvent, WindowEvent};
+use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::window::{CursorGrabMode, Window};
+
+use crate::render::{mesher, Renderer};
 use chunk::LoadedChunk;
 use controller::PlayerController;
 use world::WorldData;
@@ -22,17 +26,17 @@ const RENDER_DISTANCE: u32 = 8;
 
 /// Struct that represents everything to run the actual cubegame
 pub struct Game {
-	/// Reference counted so things like the world render pass can have
+	window: Arc<Window>,
 	pub world_data: WorldData,
-	/// player controller
 	controller: PlayerController,
 	/// Web socket connection to a game server
 	socket: WebSocket<MaybeTlsStream<TcpStream>>,
 	/// For ticking once per second
 	last_slow_tick: Instant,
+	in_menu: bool,
 }
 impl Game {
-	pub fn new(server_url: Uri) -> Result<Game, ()> {
+	pub fn new(server_url: Uri, window: Arc<Window>) -> Result<Game, ()> {
 		// connecting to server
 		let (socket, _addr) = match connect(&server_url) {
 			Ok(r) => r,
@@ -43,19 +47,23 @@ impl Game {
 		};
 		log::info!("Connected to game server at {}", server_url);
 
-		Ok(Game {
+		let game = Game {
+			window,
 			world_data: WorldData::new(),
 			controller: PlayerController::new(),
 			socket,
 			last_slow_tick: Instant::now(),
-		})
-
-		//game.send_msg(ServerMessage::CreateWorld(WorldGenesisData { seed: 123 }, "Test world".to_string()));
+			in_menu: false,
+		};
+		if game.window.has_focus() {
+			game.grab_cursor();
+		}
+		return Ok(game);
 	}
 
 	pub fn update(&mut self, dt: f32) {
 		// updating player from inputs
-		self.world_data.player.update(dt, &self.controller);
+		self.world_data.player.update(dt, &mut self.controller);
 
 		if self.last_slow_tick.elapsed() > Duration::from_secs(1) {
 			self.last_slow_tick = Instant::now();
@@ -69,6 +77,7 @@ impl Game {
 	/// Cleaning up stuff
 	pub fn shutdown(&mut self) {
 		self.socket.close(None).unwrap();
+		self.release_cursor();
 	}
 
 	/// Loads/unloads chunks based on player position
@@ -115,8 +124,45 @@ impl Game {
 		Ok(())
 	}
 
-	pub fn handle_input(&mut self, event: &winit::event::WindowEvent) {
-		self.controller.handle_input(event);
+	pub fn handle_device_event(&mut self, event: &DeviceEvent) {
+		if self.window.has_focus() {
+			if !self.in_menu {
+				self.controller.handle_input(event);
+			}
+
+			match event {
+				_ => {}
+			}
+		}
+	}
+
+	pub fn handle_window_event(&mut self, event: &WindowEvent) {
+		match event {
+			WindowEvent::Focused(has_focus) => {
+				if !*has_focus {
+					self.release_cursor();
+					self.in_menu = true;
+				}
+			}
+			WindowEvent::KeyboardInput {
+				device_id: _,
+				event:
+					KeyEvent {
+						physical_key: PhysicalKey::Code(KeyCode::Escape),
+						state: ElementState::Pressed,
+						repeat: false,
+						..
+					},
+				is_synthetic: false,
+			} => {
+				if self.in_menu {
+					self.close_menu()
+				} else {
+					self.open_menu()
+				}
+			}
+			_ => {}
+		}
 	}
 
 	/// Remeshes chunks if they need to be, also binds meshes' local bind groups
@@ -132,6 +178,30 @@ impl Game {
 			}
 			chunk.border_lines.load_buffers(renderer);
 		}
+	}
+
+	fn open_menu(&mut self) {
+		self.in_menu = true;
+		self.release_cursor();
+		self.controller.reset();
+	}
+
+	fn close_menu(&mut self) {
+		self.in_menu = false;
+		self.grab_cursor();
+	}
+
+	fn grab_cursor(&self) {
+		self.window.set_cursor_visible(false);
+		self.window
+			.set_cursor_grab(CursorGrabMode::Confined)
+			.or_else(|_e| self.window.set_cursor_grab(CursorGrabMode::Locked))
+			.unwrap();
+	}
+
+	fn release_cursor(&self) {
+		self.window.set_cursor_visible(true);
+		self.window.set_cursor_grab(CursorGrabMode::None).unwrap()
 	}
 
 	/// Helper function to send server messages
